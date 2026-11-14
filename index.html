@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trilha do Solo</title>
+<meta name="description" content="Programa pessoal para aprender a solar e improvisar no violão, a partir da pentatônica.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@500;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 30C10 24 3 15 4 9c1-5 6-7 12-7s11 2 12 7c1 6-6 15-12 21z' fill='%232a4fc4'/%3E%3C/svg%3E">
+<!-- Celular: ícone na tela inicial, abre em tela cheia (sem a barra do navegador). -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1d23" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trilha do Solo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+</head>
+<body>
+<header class="topo">
+  <div class="topo-in">
+    <a class="marca" href="#hoje" aria-label="Trilha do Solo, início">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 30C10 24 3 15 4 9c1-5 6-7 12-7s11 2 12 7c1 6-6 15-12 21z"/></svg>
+      <span>Trilha do Solo</span>
+    </a>
+    <nav class="nav" aria-label="Seções">
+      <a href="#hoje" data-rota="hoje">Hoje</a>
+      <a href="#trilha" data-rota="trilha">Trilha</a>
+      <a href="#braco" data-rota="braco">Braço</a>
+      <a href="#frases" data-rota="frases">Frases</a>
+      <a href="#base" data-rota="base">Base</a>
+      <a href="#diario" data-rota="diario">Diário</a>
+      <a href="#ajustes" data-rota="ajustes">Ajustes</a>
+    </nav>
+  </div>
+</header>
+
+<main id="app" class="conteudo">
+  <noscript><p>A Trilha do Solo precisa de JavaScript ligado no navegador.</p></noscript>
+</main>
+
+<div id="player" class="player" role="region" aria-label="Base de acompanhamento">
+  <div class="player-in">
+    <button type="button" class="btn-play" id="pl-tocar" data-acao="base-alternar" aria-label="Tocar a base">▶</button>
+    <div class="pl-info">
+      <strong id="pl-acorde">Base</strong>
+      <span id="pl-desc" class="meta"></span>
+    </div>
+    <span class="passo" role="group">
+      <button type="button" class="btn-mini" data-acao="base-bpm" data-delta="-1" aria-label="Mais devagar">−</button>
+      <span class="passo-valor" id="pl-bpm">70</span>
+      <button type="button" class="btn-mini" data-acao="base-bpm" data-delta="1" aria-label="Mais rápido">+</button>
+    </span>
+    <a class="btn" href="#base">Ajustar</a>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="data/curriculo.js"></script>
+<script src="data/frases.js"></script>
+<script src="js/teoria.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/desenho.js"></script>
+<script src="js/estado.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
