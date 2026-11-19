@@ -9,19 +9,31 @@
   /* ---------------- Braço ----------------
      opts: { de, ate, pontos:[{c,f,tipo:'raiz'|'nota'|'extra'|'certo'|'errado'|'falta'|'marcado', rotulo, fora}],
              graveEmCima, clicavel, id, faixas:[{de,ate}] } */
+  /* Nome curto de cada corda, do jeito que aparece ao lado do braço e da tab. */
+  const ROT_CORDA = [null, '1ª Mi', '2ª Si', '3ª Sol', '4ª Ré', '5ª Lá', '6ª Mi'];
+  const LEG_FINA = '1ª corda (Mi agudo): a mais fina';
+  const LEG_GROSSA = '6ª corda (Mi grave): a mais grossa';
+  /* Espessura da linha: a 6ª corda é bem mais grossa que a 1ª, como no violão. */
+  const espessura = (c) => (0.9 + (c - 1) * 0.5).toFixed(2);
+
   function braco(opts) {
     const de = Math.max(0, opts.de || 0), ate = Math.max(de + 3, opts.ate);
-    const casaW = 52, soltaW = de === 0 ? 40 : 0, padL = 10, padR = 10, topo = 16, gap = 24;
+    const rotW = 40; // coluna com o nome das cordas
+    const casaW = 52, soltaW = de === 0 ? 40 : 0, padL = 8 + rotW, padR = 10, topo = 30, gap = 24;
     const primeira = Math.max(de, 1);
     const n = ate - primeira + 1;
     const x0 = padL + soltaW;
-    const W = x0 + n * casaW + padR;
+    const W = Math.max(x0 + n * casaW + padR, 250);
     const yCorda = (c) => topo + (opts.graveEmCima ? 6 - c : c - 1) * gap;
     const yBaixo = topo + 5 * gap;
-    const H = yBaixo + 30;
+    const H = yBaixo + 46;
     const xCasa = (f) => (f === 0 ? padL + soltaW / 2 : x0 + (f - primeira + 0.5) * casaW);
     const p = [];
-    p.push(`<svg class="braco${opts.clicavel ? ' clicavel' : ''}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Braço do violão, casas ${de} a ${ate}"${opts.id ? ` data-braco="${esc(opts.id)}"` : ''}>`);
+    p.push(`<svg class="braco${opts.clicavel ? ' clicavel' : ''}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Braço do violão, casas ${de} a ${ate}. ${opts.graveEmCima ? 'Corda mais grossa em cima.' : 'Corda mais fina em cima.'}"${opts.id ? ` data-braco="${esc(opts.id)}"` : ''}>`);
+    // legendas: qual lado é a corda grossa e qual é a fina
+    p.push(`<text class="fb-leg${opts.graveEmCima ? ' grossa' : ''}" x="${padL}" y="11">${opts.graveEmCima ? LEG_GROSSA : LEG_FINA}</text>`);
+    p.push(`<text class="fb-leg${opts.graveEmCima ? '' : ' grossa'}" x="${padL}" y="${yBaixo + 41}">${opts.graveEmCima ? LEG_FINA : LEG_GROSSA}</text>`);
+    for (let c = 1; c <= 6; c++) p.push(`<text class="fb-rot-corda${c === 6 ? ' grossa' : ''}" x="${padL - 7}" y="${yCorda(c) + 3.5}">${ROT_CORDA[c]}</text>`);
     p.push(`<rect class="fb-madeira" x="${x0}" y="${topo - 8}" width="${n * casaW}" height="${5 * gap + 16}" rx="3"/>`);
     (opts.faixas || []).forEach((fx) => {
       if (fx.ate < de || fx.de > ate) return;
@@ -46,7 +58,7 @@
     // cordas
     for (let c = 1; c <= 6; c++) {
       const y = yCorda(c);
-      p.push(`<line class="fb-corda" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" style="stroke-width:${0.8 + (c - 1) * 0.35}"/>`);
+      p.push(`<line class="fb-corda${c >= 4 ? ' bordao' : ''}" x1="${padL}" y1="${y}" x2="${x0 + n * casaW + padR}" y2="${y}" style="stroke-width:${espessura(c)}"/>`);
     }
     // números das casas
     for (let f = primeira; f <= ate; f++) {
@@ -62,6 +74,10 @@
           p.push(`<rect class="fb-clique" x="${x}" y="${yCorda(c) - gap / 2}" width="${w}" height="${gap}" data-c="${c}" data-f="${f}"><title>Corda ${c}, casa ${f}</title></rect>`);
         }
       }
+    }
+    // anel de "comece aqui": a primeira nota quando se toca o desenho do grave para o agudo
+    if (opts.inicio && opts.inicio.f >= de && opts.inicio.f <= ate) {
+      p.push(`<circle class="fb-inicio" cx="${xCasa(opts.inicio.f)}" cy="${yCorda(opts.inicio.c)}" r="14.5"/>`);
     }
     // notas
     (opts.pontos || []).forEach((pt) => {
@@ -85,7 +101,7 @@
     const total = evs.reduce((m, e) => Math.max(m, e.t + e.d), 0);
     const compPorLinha = compasso === 3 ? 3 : 2;
     const tPorLinha = compPorLinha * compasso;
-    const beatW = 50, padL = 30, padR = 14, topo = 24, gap = 14;
+    const beatW = 50, padL = 44, padR = 14, topo = 24, gap = 14;
     // limites das linhas (sistemas)
     const linhas = [];
     if (total <= tPorLinha * 1.3 + anac) linhas.push([0, total]);
@@ -105,8 +121,11 @@
       const yC = (c) => y0 + (c - 1) * gap;
       const xT = (t) => padL + 12 + (t - ini) * beatW;
       const xFim = padL + 12 + (fim - ini) * beatW + 4;
-      for (let c = 1; c <= 6; c++) p.push(`<line class="tab-linha" x1="${padL}" y1="${yC(c)}" x2="${xFim}" y2="${yC(c)}"/>`);
-      p.push(`<text class="tab-rot" x="10" y="${y0 + gap * 1.2}">T</text><text class="tab-rot" x="10" y="${y0 + gap * 2.7}">A</text><text class="tab-rot" x="10" y="${y0 + gap * 4.2}">B</text>`);
+      // cada linha é uma corda: a de cima é a mais fina (1ª) e a de baixo a mais grossa (6ª)
+      for (let c = 1; c <= 6; c++) {
+        p.push(`<line class="tab-linha" x1="${padL}" y1="${yC(c)}" x2="${xFim}" y2="${yC(c)}" style="stroke-width:${(0.8 + (c - 1) * 0.3).toFixed(2)}"/>`);
+        p.push(`<text class="tab-rot${c === 6 ? ' grossa' : ''}" x="${padL - 6}" y="${yC(c) + 3.5}">${ROT_CORDA[c]}</text>`);
+      }
       p.push(`<line class="tab-barra" x1="${padL}" y1="${y0}" x2="${padL}" y2="${yC(6)}"/>`);
       // barras de compasso e marcas de tempo
       for (let t = Math.ceil(ini); t <= fim + 1e-6; t++) {
@@ -170,5 +189,21 @@
     return braco(Object.assign({ de, ate, pontos: pts }, opts || {}));
   }
 
-  TS.Desenho = { braco, tab, bracoDaFrase, esc };
+  /* Guia "qual corda é qual": as 6 cordas com a espessura exagerada, do jeito que o violão fica no colo
+     (grossa em cima) ou do jeito da tab (fina em cima). */
+  function guiaCordas(graveEmCima) {
+    const W = 330, topo = 14, gap = 22, H = topo + 5 * gap + 14;
+    const desc = [null, 'a mais fina · som mais agudo', '', '', '', '', 'a mais grossa · som mais grave'];
+    const p = [`<svg class="guia-cordas" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="As seis cordas do violão, da ${graveEmCima ? 'mais grossa (em cima) à mais fina (embaixo)' : 'mais fina (em cima) à mais grossa (embaixo)'}">`];
+    for (let c = 1; c <= 6; c++) {
+      const y = topo + (graveEmCima ? 6 - c : c - 1) * gap;
+      p.push(`<text class="fb-rot-corda${c === 6 ? ' grossa' : ''}" x="46" y="${y + 4}">${ROT_CORDA[c]}</text>`);
+      p.push(`<line class="fb-corda${c >= 4 ? ' bordao' : ''}" x1="54" y1="${y}" x2="150" y2="${y}" style="stroke-width:${(1 + (c - 1) * 0.9).toFixed(1)}"/>`);
+      if (desc[c]) p.push(`<text class="fb-leg${c === 6 ? ' grossa' : ''}" x="160" y="${y + 3.5}">${desc[c]}</text>`);
+    }
+    p.push('</svg>');
+    return p.join('');
+  }
+
+  TS.Desenho = { braco, tab, bracoDaFrase, guiaCordas, esc };
 })();

@@ -29,11 +29,10 @@ for (let d = 1; d <= 5; d++) {
 // 2) Frases: notas dentro da escala esperada
 const escalaDe = (l) => {
   const r = l.tom.raiz;
-  if (l.tom.tipo === 'maior') return [0, 2, 4, 7, 9].map((i) => T.pc(r + i));
-  const base = [0, 3, 5, 7, 10];
-  if (l.fase === 3 || l.tecnicas.includes('blue note')) base.push(6);
-  if (l.id === 'l24') base.push(2, 8);
-  return base.map((i) => T.pc(r + i));
+  // extras: notas fora da pentatônica que a frase declara de propósito (terça maior, notas da escala completa...)
+  const base = l.tom.tipo === 'maior' ? [0, 2, 4, 7, 9] : [0, 3, 5, 7, 10];
+  if (l.tom.tipo !== 'maior' && (l.fase === 3 || l.tecnicas.includes('blue note'))) base.push(6);
+  return base.concat(l.extras || []).map((i) => T.pc(r + i));
 };
 console.log('\n--- Frases ---');
 TS.frases.forEach((l) => {
@@ -98,10 +97,29 @@ const ids = new Set(TS.frases.map((x) => x.id).concat(TS.melodias.map((x) => x.i
 TS.fases.forEach((f) => {
   [...f.frases, ...f.melodias, ...f.desafios].forEach((id) => { if (!ids.has(id)) erro(`Fase ${f.n}: id inexistente ${id}`); });
   f.frases.forEach((id) => { const l = TS.frases.find((x) => x.id === id); if (l.fase !== f.n) erro(`Fase ${f.n} lista ${id}, que é da fase ${l.fase}`); });
+  f.desafios.forEach((id) => { const d = TS.desafios.find((x) => x.id === id); if (d.fase !== f.n) erro(`Fase ${f.n} lista ${id}, que é da fase ${d.fase}`); });
   if (!TS.estilosBase[f.base.estilo]) erro(`Fase ${f.n}: base desconhecida`);
   f.foco.desenhos.forEach((d) => { if (!T.instanciaPrincipal(T.escala(f.foco.modo, f.foco.tom).pcMenor, d)) erro(`Fase ${f.n}: foco desenho ${d} não cabe`); });
   console.log(`Fase ${f.n}: ${f.exercicios.length} exercícios, ${f.frases.length} frases, ${f.melodias.length} melodias, ${f.desafios.length} desafios, ${f.regras.length} regras, ${f.checkpoint.length} critérios`);
 });
+
+// 4b) Todo conteúdo pertence a uma fase; desafios e bases apontam para coisas que existem
+const listados = new Set(TS.fases.flatMap((f) => [...f.frases, ...f.melodias, ...f.desafios]));
+ids.forEach((id) => { if (!listados.has(id)) erro(`${id} não aparece em nenhuma fase`); });
+if (ids.size !== TS.frases.length + TS.melodias.length + TS.desafios.length) erro('há ids repetidos em frases, melodias ou desafios');
+TS.desafios.forEach((d) => {
+  if (!d.base || !T.PROGRESSOES[d.base.estilo] || !(d.base.tom >= 0 && d.base.tom <= 11) || !(d.base.bpm >= 40 && d.base.bpm <= 200)) erro(`${d.id}: base inválida`);
+  if (!d.pistas || !d.pistas.length) erro(`${d.id}: sem pistas`);
+});
+const gruposBase = new Set(TS.gruposBase.map((g) => g.id));
+Object.keys(TS.estilosBase).forEach((k) => {
+  const e = TS.estilosBase[k];
+  if (!T.PROGRESSOES[k]) erro(`estilosBase.${k}: sem progressão em T.PROGRESSOES`);
+  if (!gruposBase.has(e.grupo)) erro(`estilosBase.${k}: grupo desconhecido`);
+  if (!(e.bpm >= 40 && e.bpm <= 200) || !T.MODOS[e.usa]) erro(`estilosBase.${k}: bpm ou escala inválidos`);
+});
+Object.keys(T.PROGRESSOES).forEach((k) => { if (!TS.estilosBase[k]) erro(`T.PROGRESSOES.${k}: sem descrição em estilosBase`); });
+console.log(`${TS.frases.length} frases (${TS.frases.filter((l) => l.estilo).length} no estilo dos mestres), ${TS.melodias.length} melodias, ${TS.desafios.length} solos e riffs famosos, ${Object.keys(TS.estilosBase).length} bases.`);
 
 // 5) Escalas nos modos e bases
 const blues = T.escala('blues', 9), comp = T.escala('completa', 9), mai = T.escala('maior', 9);

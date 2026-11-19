@@ -36,8 +36,12 @@
       licks: {},
       quiz: {},
       sessoes: [],
-      hojeFeitos: { data: null, blocos: {} },
-      base: { estilo: 'menor', tom: 9, bpm: 70, ritmo: 'bateria', volume: 0.6 },
+      aulas: {},            // fase -> índice da aula aberta (0 = Aula 1)
+      aulasFeitas: {},      // 'f2a3' -> data em que a aula foi concluída
+      aulaVista: null,      // último dia em que o app conferiu se devia abrir a aula seguinte
+      desafiosFeitos: {},   // solos e riffs famosos que você já tirou
+      hojeFeitos: { data: null, chave: null, blocos: {} },
+      base: { estilo: 'menor', tom: 9, bpm: 70, ritmo: 'bateria', volume: 0.6, baixo: true, contagem: true },
       braco: { tom: 9, modo: 'menor', desenho: 1, vista: 'desenho', rotulo: 'nota' }
     };
   }
@@ -58,12 +62,23 @@
   E.carregar = function () {
     try {
       const txt = localStorage.getItem(CHAVE);
-      if (txt) estado = mesclar(padrao(), JSON.parse(txt));
+      if (txt) { const dados = JSON.parse(txt); estado = mesclar(padrao(), dados); migrar(dados); }
     } catch (e) {
       armazenamentoOk = false;
     }
     return estado;
   };
+
+  /* Progresso salvo antes de existirem as aulas numeradas: cada dia praticado numa fase vira uma aula feita. */
+  function migrar(dados) {
+    if (dados.aulasFeitas || !estado.sessoes.length) return;
+    const porFase = {};
+    estado.sessoes.forEach((x) => { if (x.fase && x.data) (porFase[x.fase] = porFase[x.fase] || new Set()).add(x.data); });
+    Object.keys(porFase).forEach((f) => {
+      [...porFase[f]].sort().forEach((data, i) => { estado.aulasFeitas['f' + f + 'a' + i] = data; });
+      estado.aulas[f] = porFase[f].size;
+    });
+  }
   E.salvar = function () {
     try { localStorage.setItem(CHAVE, JSON.stringify(estado)); armazenamentoOk = true; }
     catch (e) { armazenamentoOk = false; }
@@ -109,9 +124,30 @@
       .map((x) => x.id);
   };
 
-  /* -------- Blocos de hoje -------- */
+  /* -------- Aulas: cada fase é uma fila de aulas numeradas. Você avança ou volta quando quiser. -------- */
+  E.aulaAtual = (fase) => estado.aulas[fase || estado.faseAtual] || 0;
+  E.chaveAula = (fase, i) => 'f' + fase + 'a' + i;
+  E.aulaFeitaEm = (fase, i) => estado.aulasFeitas[E.chaveAula(fase, i)] || null;
+  E.aulasFeitasNaFase = function (fase) {
+    const pre = 'f' + fase + 'a';
+    return Object.keys(estado.aulasFeitas).filter((k) => k.startsWith(pre)).length;
+  };
+  E.irParaAula = function (fase, i) { E.mudar((s) => { s.aulas[fase] = Math.max(0, i); }); };
+  E.concluirAula = function (fase, i) { E.mudar((s) => { s.aulasFeitas[E.chaveAula(fase, i)] = E.hoje(); }); };
+  /* Na primeira vez que o app abre no dia: se a aula aberta já foi concluída num dia anterior, abre a seguinte.
+     Só uma vez por dia, para não desfazer quando você volta de propósito a uma aula antiga. */
+  E.abrirAulaDoDia = function () {
+    if (estado.aulaVista === E.hoje()) return;
+    const f = estado.faseAtual;
+    let i = E.aulaAtual(f);
+    while (E.aulaFeitaEm(f, i) && E.aulaFeitaEm(f, i) < E.hoje()) i++;
+    E.mudar((s) => { s.aulas[f] = i; s.aulaVista = E.hoje(); });
+  };
+
+  /* -------- Blocos da aula aberta (valem para o dia e para a aula) -------- */
   E.blocosDeHoje = function () {
-    if (estado.hojeFeitos.data !== E.hoje()) estado.hojeFeitos = { data: E.hoje(), blocos: {} };
+    const chave = E.chaveAula(estado.faseAtual, E.aulaAtual());
+    if (estado.hojeFeitos.data !== E.hoje() || estado.hojeFeitos.chave !== chave) estado.hojeFeitos = { data: E.hoje(), chave, blocos: {} };
     return estado.hojeFeitos.blocos;
   };
   E.marcarBloco = function (id, feito) {
@@ -151,6 +187,7 @@
       throw new Error('Este arquivo não é um backup da Trilha do Solo.');
     }
     estado = mesclar(padrao(), dados);
+    migrar(dados);
     E.salvar();
   };
   E.zerar = function () {

@@ -6,7 +6,7 @@
   const T = TS.T;
   const A = {};
 
-  let ctx = null, master = null, busFrase = null, busBase = null, ruido = null;
+  let ctx = null, master = null, busFrase = null, busBase = null, busViolao = null, busGrave = null, ruido = null;
   const cache = new Map();
   const LIMITE_CACHE = 56;
   A.timbre = 'nylon';
@@ -23,25 +23,73 @@
       const corpo = ctx.createBiquadFilter();
       corpo.type = 'peaking'; corpo.frequency.value = 190; corpo.Q.value = 1.1; corpo.gain.value = 4;
       const topo = ctx.createBiquadFilter();
-      topo.type = 'lowpass'; topo.frequency.value = 6500; topo.Q.value = 0.5;
+      topo.type = 'lowpass'; topo.frequency.value = 9000; topo.Q.value = 0.5;
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.2;
       master = ctx.createGain(); master.gain.value = 0.85;
-      master.connect(corpo); corpo.connect(topo); topo.connect(comp); comp.connect(ctx.destination);
-      busFrase = ctx.createGain(); busFrase.gain.value = 1; busFrase.connect(master);
+      master.connect(corpo); corpo.connect(topo); topo.connect(comp);
+      ligarTeto(comp);
+      busFrase = ctx.createGain(); busFrase.gain.value = 1.4; busFrase.connect(master);
       busBase = ctx.createGain(); busBase.gain.value = 0.6; busBase.connect(master);
-      ruido = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.4), ctx.sampleRate);
+      // o violão da base passa por um filtro só dele; baixo e bateria vão direto
+      busViolao = ctx.createGain(); busViolao.gain.value = 1.5; busViolao.connect(busBase);
+      busGrave = ctx.createGain(); busGrave.gain.value = 1; busGrave.connect(master);
+      ruido = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.2), ctx.sampleRate);
       const r = ruido.getChannelData(0);
       for (let i = 0; i < r.length; i++) r[i] = Math.random() * 2 - 1;
+      ligarSala();
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   };
 
+  /* Teto: o compressor deixa passar o estalo inicial do bumbo e da caixa, e a soma passaria do máximo que
+     o aparelho reproduz (o som "racha"). Esta curva arredonda só o que passa de 70% do máximo e nunca chega a 100%.
+     O WaveShaper só enxerga entradas de -1 a 1, por isso o sinal entra pela metade e a curva já devolve no tamanho certo. */
+  function ligarTeto(origem) {
+    if (!ctx.createWaveShaper) { origem.connect(ctx.destination); return; }
+    const N = 2049, curva = new Float32Array(N), joelho = 0.7, folga = 0.28;
+    for (let i = 0; i < N; i++) {
+      const x = ((i / (N - 1)) * 2 - 1) * 2;            // entrada real: de -2 a 2
+      const a = Math.abs(x);
+      const y = a <= joelho ? a : joelho + folga * Math.tanh((a - joelho) / folga);
+      curva[i] = x < 0 ? -y : y;
+    }
+    const metade = ctx.createGain(); metade.gain.value = 0.5;
+    const teto = ctx.createWaveShaper();
+    teto.curve = curva;
+    teto.oversample = '2x';
+    origem.connect(metade); metade.connect(teto); teto.connect(ctx.destination);
+  }
+
+  /* Sala: reverberação curta gerada na hora (sem arquivo). Dá "ar" ao som seco das cordas. */
+  function ligarSala() {
+    if (!ctx.createConvolver) return;
+    const sr = ctx.sampleRate, len = Math.floor(sr * 1.6);
+    const ir = ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      const sobe = Math.floor(sr * 0.004);
+      for (let i = 0; i < len; i++) {
+        lp += 0.38 * (Math.random() * 2 - 1 - lp);
+        d[i] = lp * Math.pow(1 - i / len, 3.4) * (i < sobe ? i / sobe : 1);
+      }
+    }
+    const sala = ctx.createConvolver();
+    sala.buffer = ir;
+    const volta = ctx.createGain(); volta.gain.value = 0.9;
+    sala.connect(volta); volta.connect(master);
+    const envioFrase = ctx.createGain(); envioFrase.gain.value = 0.24;
+    const envioBase = ctx.createGain(); envioBase.gain.value = 0.13;
+    busFrase.connect(envioFrase); envioFrase.connect(sala);
+    busBase.connect(envioBase); envioBase.connect(sala);
+  }
+
   A.definirTimbre = function (t) {
     if (t !== A.timbre) { A.timbre = t; cache.clear(); }
   };
-  A.volumeBase = function (v) { if (busBase) busBase.gain.value = v; };
+  A.volumeBase = function (v) { if (busBase) { busBase.gain.value = v; busGrave.gain.value = Math.min(1.4, v / 0.6); } };
 
   /* Uma corda: buffer Karplus-Strong + correção fina de afinação via playbackRate. */
   function corda(midi) {
@@ -49,23 +97,29 @@
     if (cache.has(chave)) { const v = cache.get(chave); cache.delete(chave); cache.set(chave, v); return v; }
     const sr = ctx.sampleRate;
     const freq = 440 * Math.pow(2, (midi - 69) / 12);
-    const p = Math.max(2, Math.round(sr / freq - 0.5));
-    const real = sr / (p + 0.5);
+    const nylon = A.timbre === 'nylon';
+    // s = peso do filtro do laço: menor segura o brilho por mais tempo (aço); 0,5 apaga os agudos logo (nylon)
+    const s = nylon ? 0.5 : 0.38;
+    const p = Math.max(2, Math.round(sr / freq - s));
+    const real = sr / (p + s);
     const len = Math.floor(sr * 3);
     const buf = ctx.createBuffer(1, len, sr);
     const d = buf.getChannelData(0);
-    const nylon = A.timbre === 'nylon';
-    const brilho = nylon ? 0.3 : 0.6;
-    const t60 = (nylon ? 2.3 : 3.4) * Math.max(0.45, Math.min(1.35, Math.pow(2, (52 - midi) / 24)));
-    const g = Math.pow(0.001, (p + 0.5) / (t60 * sr));
+    const brilho = nylon ? 0.4 : 0.72;
+    const t60 = (nylon ? 2.6 : 3.8) * Math.max(0.45, Math.min(1.35, Math.pow(2, (52 - midi) / 24)));
+    const g = Math.pow(0.001, (p + s) / (t60 * sr));
+    // ataque: ruído suavizado, passado por um "pente" que imita o ponto onde o dedo ou a palheta toca a corda
+    const x = new Float32Array(p);
     let lp = 0, media = 0, pico = 0;
-    for (let i = 0; i < p; i++) { lp += brilho * (Math.random() * 2 - 1 - lp); d[i] = lp; media += lp; }
+    for (let i = 0; i < p; i++) { lp += brilho * (Math.random() * 2 - 1 - lp); x[i] = lp; }
+    const ponto = Math.max(1, Math.round(p * (nylon ? 0.24 : 0.14)));
+    for (let i = 0; i < p; i++) { d[i] = x[i] - 0.85 * x[(i + p - ponto) % p]; media += d[i]; }
     media /= p;
     for (let i = 0; i < p; i++) { d[i] -= media; pico = Math.max(pico, Math.abs(d[i])); }
     const k = pico > 0 ? 0.9 / pico : 1;
     for (let i = 0; i < p; i++) d[i] *= k;
-    d[p] = g * 0.5 * (d[0] + d[p - 1]);
-    for (let i = p + 1; i < len; i++) d[i] = g * 0.5 * (d[i - p] + d[i - p - 1]);
+    d[p] = g * ((1 - s) * d[0] + s * d[p - 1]);
+    for (let i = p + 1; i < len; i++) d[i] = g * ((1 - s) * d[i - p] + s * d[i - p - 1]);
     const fade = Math.floor(sr * 0.05);
     for (let i = 0; i < fade; i++) d[len - 1 - i] *= i / fade;
     const v = { buf, rate: freq / real };
@@ -133,29 +187,83 @@
     if (grupo) { const it = { src: o, g, osc: null }; grupo.add(it); o.onended = () => grupo.delete(it); }
   }
 
-  function bumbo(t, grupo) {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.frequency.setValueAtTime(130, t);
-    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    g.gain.setValueAtTime(0.9, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
-    o.connect(g); g.connect(busBase);
-    o.start(t); o.stop(t + 0.3);
-    const it = { src: o, g, osc: null }; grupo.add(it); o.onended = () => grupo.delete(it);
+  /* ---------------- Bateria e baixo (sintetizados) ---------------- */
+  function guardar(grupo, src, g, osc) {
+    const it = { src, g, osc: osc || null };
+    grupo.add(it);
+    src.onended = () => grupo.delete(it);
   }
 
-  function ruidoFiltrado(t, tipo, freq, dur, vol, grupo) {
+  /* Um tom que cai de frequência: o corpo do bumbo e da caixa. */
+  function tomCaindo(t, de, ate, queda, dur, vol, bus, grupo, tipo) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    if (tipo) o.type = tipo;
+    o.frequency.setValueAtTime(de, t);
+    o.frequency.exponentialRampToValueAtTime(ate, t + queda);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bus);
+    o.start(t); o.stop(t + dur + 0.02);
+    guardar(grupo, o, g);
+  }
+
+  function ruidoFiltrado(t, tipo, freq, dur, vol, grupo, q) {
     const s = ctx.createBufferSource(); s.buffer = ruido;
-    const f = ctx.createBiquadFilter(); f.type = tipo; f.frequency.value = freq; f.Q.value = 0.8;
+    const f = ctx.createBiquadFilter(); f.type = tipo; f.frequency.value = freq; f.Q.value = q || 0.8;
     const g = ctx.createGain();
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(g); g.connect(busBase);
-    s.start(t); s.stop(t + dur + 0.02);
-    const it = { src: s, g, osc: null }; grupo.add(it); s.onended = () => grupo.delete(it);
+    s.start(t, Math.random() * 0.1); s.stop(t + dur + 0.02);
+    guardar(grupo, s, g);
   }
-  const caixa = (t, grupo) => ruidoFiltrado(t, 'bandpass', 1900, 0.16, 0.32, grupo);
-  const chimbal = (t, forte, grupo) => ruidoFiltrado(t, 'highpass', 7500, 0.045, forte ? 0.14 : 0.08, grupo);
+
+  function bumbo(t, vel, grupo) {
+    tomCaindo(t, 150, 46, 0.11, 0.3, vel * 0.85, busGrave, grupo);
+    ruidoFiltrado(t, 'lowpass', 2600, 0.02, vel * 0.25, grupo);   // o "tec" da batida
+  }
+  function caixa(t, vel, grupo) {
+    tomCaindo(t, 230, 165, 0.06, 0.12, vel * 0.7, busBase, grupo, 'triangle');   // pele
+    ruidoFiltrado(t, 'bandpass', 2300, 0.19, vel, grupo, 0.6);                    // esteira
+    ruidoFiltrado(t, 'highpass', 5200, 0.1, vel * 0.45, grupo);
+  }
+  const aro = (t, grupo) => {
+    tomCaindo(t, 1750, 1600, 0.02, 0.035, 0.28, busBase, grupo, 'triangle');
+    ruidoFiltrado(t, 'bandpass', 3400, 0.025, 0.16, grupo, 2);
+  };
+  const chimbal = (t, vel, aberto, grupo) => ruidoFiltrado(t, 'highpass', aberto ? 6800 : 8200, aberto ? 0.28 : 0.045, vel, grupo);
+  const prato = (t, grupo) => {
+    ruidoFiltrado(t, 'highpass', 5200, 1.1, 0.13, grupo);
+    ruidoFiltrado(t, 'bandpass', 9000, 0.7, 0.07, grupo, 1.4);
+  };
+
+  /* Volume do baixo em relação ao que a levada pede. Ajustado medindo a mistura: o baixo sustenta a nota,
+     então com o mesmo pico ele soma muito mais volume que as cordas dedilhadas. */
+  const NIVEL_BAIXO = 0.36;
+
+  /* Baixo: onda triangular filtrada + uma oitava acima bem baixinha (para aparecer em caixas pequenas e no celular). */
+  function baixo(midi, t, dur, vel, grupo) {
+    const f0 = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = ctx.createOscillator(), o2 = ctx.createOscillator();
+    o.type = 'triangle'; o.frequency.setValueAtTime(f0, t);
+    o2.type = 'sine'; o2.frequency.setValueAtTime(f0 * 2, t);
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime(0.42, t);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.9;
+    f.frequency.setValueAtTime(900, t);
+    f.frequency.exponentialRampToValueAtTime(320, t + 0.18);
+    const g = ctx.createGain();
+    const fim = t + Math.max(0.09, dur);
+    vel *= NIVEL_BAIXO;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.008);
+    g.gain.linearRampToValueAtTime(vel * 0.72, t + 0.09);
+    g.gain.setValueAtTime(vel * 0.72, Math.max(t + 0.09, fim - 0.05));
+    g.gain.linearRampToValueAtTime(0.0001, fim);
+    o.connect(f); o2.connect(g2); g2.connect(f); f.connect(g); g.connect(busGrave);
+    o.start(t); o.stop(fim + 0.03);
+    o2.start(t); o2.stop(fim + 0.03);
+    guardar(grupo, o, g, o2);
+  }
 
   /* ---------------- Notas soltas (clique no braço) ---------------- */
   const grupoAvulso = new Set();
@@ -261,75 +369,166 @@
 
   /* ---------------- Bases de acompanhamento ---------------- */
   const Base = {
-    tocando: false, cfg: { estilo: 'menor', tom: 9, bpm: 70, ritmo: 'bateria' },
+    tocando: false, cfg: { estilo: 'menor', tom: 9, bpm: 70, ritmo: 'bateria', baixo: true, contagem: false },
     grupo: new Set(), timer: null, compasso: 0, passo: 0, inicioCompasso: 0, fila: [], ouvintes: new Set(), raf: null, compassos: []
   };
   A.Base = Base;
 
-  const BATIDA = [[0, 'D'], [2, 'D'], [3, 'U'], [5, 'U'], [6, 'D'], [7, 'U']];
+  /* Levadas: o "jeito de tocar" de cada base. A chave é a mesma de T.PROGRESSOES e de TS.estilosBase.
+     Grade: 4 tempos × div passos (div 2 = colcheias; div 3 = tercinas, o balanço do blues lento).
+     swing: a 2ª colcheia de cada tempo atrasa (shuffle).
+     Bateria, um caractere por passo: b bumbo, c caixa (r = aro), h chimbal (o = aberto). X forte, x fraco, . nada.
+     baixo: R tônica, 3 terça, 5 quinta, 6 sexta (ou sétima no acorde menor), 7 sétima, 8 oitava.
+     viol: batida (D para baixo, U para cima, minúscula = fraca, x = seca), arpejo (índice da nota do acorde),
+           boogie (a levada de duas cordas do blues), power (P cheio, p abafado), pedal. */
+  const LEVADAS = {
+    metronomo: { div: 2 },
+    drone: { div: 2, viol: { t: 'pedal' } },
+    menor: { div: 2, b: 'X..xX...', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R..RR.5.', viol: { t: 'batida', p: 'D.DU.UDU' } },
+    menor2: { div: 2, b: 'X.....x.', c: '....r...', h: 'x.x.x.x.', baixo: 'R.....5.', viol: { t: 'arpejo', p: [0, 1, 2, 3, 4, 3, 2, 3] } },
+    rock3: { div: 2, b: 'X..XX...', c: '..X...X.', h: 'XxXxXxXx', baixo: 'RRRRRRRR', viol: { t: 'batida', p: 'D.D.DUDU' } },
+    descida: { div: 2, b: 'X..X..x.', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R..R..R.', viol: { t: 'batida', p: 'D..D..DU' } },
+    balada: { div: 2, b: 'X.....X.', c: '....X...', h: 'x.x.x.x.', baixo: 'R.....5.', viol: { t: 'arpejo', p: [0, 2, 3, 4, 3, 2, 3, 2] } },
+    epica: { div: 2, b: 'X..x..X.', c: '....X...', h: 'xxXxxxXx', baixo: 'R...R.5.', viol: { t: 'batida', p: 'D...d.DU' } },
+    pesado: { div: 2, b: 'X..XX...', c: '..X...X.', h: 'XxXxXxXx', baixo: 'RRRRRRRR', viol: { t: 'power', p: 'PppPppPp' } },
+    blues: { div: 2, swing: true, b: 'X...X...', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R.3.5.6.', viol: { t: 'boogie' } },
+    bluesLento: { div: 3, b: 'X.....X....x', c: '...X.....X..', h: 'XxxXxxXxxXxx', baixo: 'R..3..5..6..', viol: { t: 'batida', p: 'D....uD..d.u' } },
+    bluesMenor: { div: 2, b: 'X..x..X.', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R..R..5.', viol: { t: 'batida', p: 'D.DU.Ud.' } },
+    rocknroll: { div: 2, b: 'X...X...', c: '..X...X.', h: 'XXXXXXXX', baixo: 'R3567653', viol: { t: 'boogie' } },
+    pop: { div: 2, b: 'X...X.x.', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R..RR...', viol: { t: 'batida', p: 'D.DU.UDU' } },
+    anos50: { div: 3, b: 'X.....X.....', c: '...X.....X..', h: 'XxxXxxXxxXxx', baixo: 'R.....R..5..', viol: { t: 'arpejo', p: [0, 2, 3, 4, 3, 2, 1, 2, 3, 4, 3, 2] } },
+    country: { div: 2, b: 'X...X...', c: '..x...x.', h: '..x...x.', baixo: 'R...5...', viol: { t: 'batida', p: '..DU..DU' } },
+    rockMaior: { div: 2, b: 'X..XX...', c: '..X...X.', h: 'XxXxXxXx', baixo: 'R.RR.R5.', viol: { t: 'batida', p: 'D.DU.UDU' } },
+    andaluz: { div: 2, b: 'X..X..X.', c: '..r...r.', h: 'xxXxxxXx', baixo: 'R..R..5.', viol: { t: 'batida', p: 'D.DUdUDU' } },
+    latino: { div: 2, b: 'X..x..X.', c: '..r..r..', h: 'xxXxxxXx', baixo: 'R..5R.5.', viol: { t: 'batida', p: 'D..x.UxU' } },
+    reggae: { div: 2, b: '....X...', c: '....r...', h: 'x.xXx.xX', baixo: 'R..R.5..', viol: { t: 'batida', p: '..xu..xu' } }
+  };
+  A.LEVADAS = LEVADAS;
   const BOOGIE = [7, 7, 9, 9, 10, 10, 9, 9];
 
-  function tempoPasso(inicioCompasso, passo, spb, swing) {
-    const tempo = Math.floor(passo / 2), meio = passo % 2;
-    return inicioCompasso + tempo * spb + (meio ? (swing ? spb * 2 / 3 : spb / 2) : 0);
+  const levada = () => LEVADAS[Base.cfg.estilo] || LEVADAS.metronomo;
+
+  function tempoPasso(inicioCompasso, passo, spb, lv) {
+    const tempo = Math.floor(passo / lv.div), sub = passo % lv.div;
+    const frac = lv.swing && sub === 1 ? 2 / 3 : sub / lv.div;
+    return inicioCompasso + (tempo + frac) * spb;
   }
 
   function batida(t, midis, dir, vel, dur) {
-    const notas = dir === 'D' ? midis : midis.slice(-4).reverse();
+    const baixo2 = dir === 'D';
+    const notas = baixo2 ? midis : midis.slice(-4).reverse();
+    const humano = 0.9 + Math.random() * 0.2;
     notas.forEach((m, i) => {
-      const ti = t + i * (dir === 'D' ? 0.013 : 0.009);
-      criarVoz({ midi: m, t: ti, fim: ti + dur, vel: vel * (dir === 'D' ? 1 : 0.7), rates: [] }, busBase, Base.grupo);
+      const ti = t + i * (baixo2 ? 0.014 : 0.009);
+      criarVoz({ midi: m, t: ti, fim: ti + dur, vel: vel * humano * (baixo2 ? 1 : 0.7), rates: [] }, busViolao, Base.grupo);
     });
+  }
+
+  function tocarViolaoBase(lv, ac, p, t, spb) {
+    const v = lv.viol;
+    if (!v) return;
+    const r = 40 + T.pc(ac.raiz - 4);
+    const passoT = spb / lv.div;
+    if (v.t === 'pedal') {
+      const seq = { 0: r + 19, 2: r + 24, 4: r + 24, 6: r + 12 };
+      if (seq[p] != null) criarVoz({ midi: seq[p], t, fim: t + spb * 4, vel: p === 6 ? 0.6 : 0.42, rates: [] }, busViolao, Base.grupo);
+      if (p === 0) criarVoz({ midi: r, t, fim: t + spb * 4.2, vel: 0.55, rates: [] }, busViolao, Base.grupo);
+    } else if (v.t === 'boogie') {
+      const forte = p % 2 === 0;
+      const dur = (lv.swing ? (forte ? spb * 2 / 3 : spb / 3) : passoT) * 0.92;
+      const vel = forte ? 0.5 : 0.36;
+      criarVoz({ midi: r, t, fim: t + dur, vel, rates: [] }, busViolao, Base.grupo);
+      criarVoz({ midi: r + BOOGIE[p % 8], t: t + 0.006, fim: t + dur, vel: vel * 0.85, rates: [] }, busViolao, Base.grupo);
+    } else if (v.t === 'power') {
+      const ch = v.p[p];
+      if (ch !== 'P' && ch !== 'p') return;
+      const cheio = ch === 'P';
+      const notas = cheio ? [r, r + 7, r + 12] : [r, r + 7];
+      notas.forEach((m, i) => criarVoz({ midi: m, t: t + i * 0.006, fim: t + passoT * (cheio ? 0.95 : 0.45), vel: cheio ? 0.5 : 0.34, rates: [] }, busViolao, Base.grupo));
+    } else if (v.t === 'arpejo') {
+      const midis = T.acorde(ac.raiz, ac.tipo);
+      const i = v.p[p];
+      if (i == null) return;
+      criarVoz({ midi: midis[Math.min(i, midis.length - 1)], t, fim: t + spb * 2.4, vel: p === 0 ? 0.5 : 0.4, rates: [] }, busViolao, Base.grupo);
+    } else if (v.t === 'batida') {
+      const ch = v.p[p];
+      if (!ch || ch === '.') return;
+      const midis = T.acorde(ac.raiz, ac.tipo);
+      if (ch === 'x') batida(t, midis.slice(-3), 'D', 0.34, 0.075);
+      else if (ch === 'D') batida(t, midis, 'D', 0.36, spb * 1.15);
+      else if (ch === 'd') batida(t, midis, 'D', 0.24, spb * 0.9);
+      else if (ch === 'U') batida(t, midis, 'U', 0.36, spb * 0.9);
+      else if (ch === 'u') batida(t, midis, 'U', 0.26, spb * 0.6);
+    }
+  }
+
+  function tocarBaixoBase(lv, ac, p, t, spb) {
+    const ch = lv.baixo && lv.baixo[p];
+    if (!ch || ch === '.') return;
+    const menorAc = ac.tipo === 'm' || ac.tipo === 'm7' || ac.tipo === '5';
+    const interv = { R: 0, 3: menorAc ? 3 : 4, 5: 7, 6: menorAc ? 10 : 9, 7: 10, 8: 12 }[ch];
+    if (interv == null) return;
+    const passos = 4 * lv.div;
+    let n = 1;
+    while (p + n < passos && lv.baixo[p + n] === '.') n++;
+    const dur = Math.min(n * spb / lv.div, spb * 2) * 0.9;
+    baixo(28 + T.pc(ac.raiz - 4) + interv, t, dur, p === 0 ? 0.62 : 0.5, Base.grupo);
+  }
+
+  function tocarBateriaBase(lv, p, t, iComp, nComp) {
+    if (!lv.b) return;
+    const passos = 4 * lv.div;
+    const b = lv.b[p], c = lv.c[p], h = lv.h[p];
+    // virada: no último tempo do ciclo (4 compassos ou mais), a caixa cresce e chama o recomeço
+    const virada = nComp >= 4 && iComp === nComp - 1 && p >= passos - lv.div;
+    if (b === 'X' || b === 'x') bumbo(t, b === 'X' ? 0.95 : 0.6, Base.grupo);
+    if (virada) caixa(t, 0.3 + 0.1 * (p - (passos - lv.div)), Base.grupo);
+    else if (c === 'X' || c === 'x') caixa(t, c === 'X' ? 0.46 : 0.2, Base.grupo);
+    else if (c === 'r') aro(t, Base.grupo);
+    if (h === 'X' || h === 'x') chimbal(t, h === 'X' ? 0.13 : 0.07, false, Base.grupo);
+    else if (h === 'o') chimbal(t, 0.1, true, Base.grupo);
+    if (p === 0 && iComp === 0 && Base.compasso > 0 && nComp >= 4) prato(t, Base.grupo);
   }
 
   function agendarPasso(t) {
     const cfg = Base.cfg, spb = 60 / cfg.bpm, est = cfg.estilo;
-    const swing = est === 'blues';
-    const ac = Base.compassos[Base.compasso % Base.compassos.length];
+    const lv = levada();
     const p = Base.passo;
+    const noTempo = p % lv.div === 0;
 
-    if (p % 2 === 0) {
-      Base.fila.push({ t, compasso: Base.compasso % Base.compassos.length, tempo: p / 2, acorde: ac.nome });
+    // contagem: um compasso de cliques antes de a base entrar
+    if (Base.compasso < 0) {
+      if (noTempo) {
+        clique(t, p === 0, busBase, Base.grupo);
+        Base.fila.push({ t, contagem: p / lv.div + 1 });
+      }
+      return;
+    }
+
+    const nComp = Base.compassos.length;
+    const iComp = Base.compasso % nComp;
+    const ac = Base.compassos[iComp];
+    if (noTempo) {
+      Base.fila.push({ t, compasso: iComp, tempo: p / lv.div, acorde: ac.nome });
       if (cfg.ritmo === 'clique' || est === 'metronomo') clique(t, p === 0, busBase, Base.grupo);
     }
-    if (cfg.ritmo === 'bateria' && est !== 'metronomo') {
-      if (p === 0 || p === 4) bumbo(t, Base.grupo);
-      if (p === 2 || p === 6) caixa(t, Base.grupo);
-      chimbal(t, p % 2 === 0, Base.grupo);
-    }
-
-    if (est === 'drone') {
-      const r = 40 + T.pc(ac.raiz - 4);
-      const seq = { 0: r + 19, 2: r + 24, 4: r + 24, 6: r + 12 };
-      if (seq[p] != null) criarVoz({ midi: seq[p], t, fim: t + spb * 4, vel: p === 6 ? 0.6 : 0.42, rates: [] }, busBase, Base.grupo);
-      if (p === 0) criarVoz({ midi: r, t, fim: t + spb * 4.2, vel: 0.55, rates: [] }, busBase, Base.grupo);
-    } else if (est === 'blues') {
-      const r = 40 + T.pc(ac.raiz - 4);
-      const dur = (p % 2 === 0 ? spb * 2 / 3 : spb / 3) * 0.92;
-      const vel = p % 2 === 0 ? 0.5 : 0.36;
-      criarVoz({ midi: r, t, fim: t + dur, vel, rates: [] }, busBase, Base.grupo);
-      criarVoz({ midi: r + BOOGIE[p], t: t + 0.006, fim: t + dur, vel: vel * 0.85, rates: [] }, busBase, Base.grupo);
-    } else if (est === 'menor' || est === 'menor2' || est === 'pop') {
-      const b = BATIDA.find((x) => x[0] === p);
-      if (b) {
-        const midis = T.acorde(ac.raiz, ac.tipo === 'M' ? 'M' : ac.tipo);
-        batida(t, midis, b[1], b[1] === 'D' ? 0.36 : 0.26, spb * 1.1);
-      }
-      if (p === 0) criarVoz({ midi: T.acorde(ac.raiz, 'm')[0], t, fim: t + spb * 2, vel: 0.5, rates: [] }, busBase, Base.grupo);
-    }
+    if (est === 'metronomo') return;
+    if (cfg.ritmo === 'bateria') tocarBateriaBase(lv, p, t, iComp, nComp);
+    if (cfg.baixo !== false) tocarBaixoBase(lv, ac, p, t, spb);
+    tocarViolaoBase(lv, ac, p, t, spb);
   }
 
   function agendador() {
     if (!Base.tocando) return;
     const spb = 60 / Base.cfg.bpm;
-    const swing = Base.cfg.estilo === 'blues';
+    const lv = levada();
     const horizonte = ctx.currentTime + 0.15;
     for (;;) {
-      const t = tempoPasso(Base.inicioCompasso, Base.passo, spb, swing);
+      const t = tempoPasso(Base.inicioCompasso, Base.passo, spb, lv);
       if (t > horizonte) break;
       agendarPasso(t);
       Base.passo++;
-      if (Base.passo >= 8) { Base.passo = 0; Base.compasso++; Base.inicioCompasso += 4 * spb; }
+      if (Base.passo >= 4 * lv.div) { Base.passo = 0; Base.compasso++; Base.inicioCompasso += 4 * spb; }
     }
   }
 
@@ -365,7 +564,9 @@
     if (!A.garantir()) return;
     if (cfg) Object.assign(Base.cfg, cfg);
     Base.compassos = T.compassosBase(Base.cfg.estilo, Base.cfg.tom);
-    Base.compasso = 0; Base.passo = 0; Base.fila = [];
+    // contagem: o compasso -1 é só de cliques (1, 2, 3, 4) para você entrar junto
+    Base.compasso = Base.cfg.contagem && Base.cfg.estilo !== 'metronomo' ? -1 : 0;
+    Base.passo = 0; Base.fila = [];
     Base.inicioCompasso = ctx.currentTime + 0.12;
     Base.tocando = true;
     clearInterval(Base.timer);

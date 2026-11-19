@@ -41,13 +41,41 @@ TS.violao = {
   guitarra: 'Quando chegar a guitarra: as cordas são mais finas (bends fáceis) e o som sustenta mais. Com distorção, qualquer corda solta faz barulho, então abafar vira prioridade. O mapa, as frases e o ouvido que você treinou aqui servem inteiros na guitarra.'
 };
 
+/* Bases de acompanhamento. A chave é a mesma de T.PROGRESSOES (js/teoria.js) e das levadas (js/audio.js).
+   grupo: onde aparece na aba Base · bpm: andamento sugerido · usa: escala para solar ('menor' | 'maior' | 'blues'). */
+TS.gruposBase = [
+  { id: 'treino', nome: 'Treino' },
+  { id: 'rock', nome: 'Rock e pop em tom menor' },
+  { id: 'blues', nome: 'Blues e rock\'n\'roll' },
+  { id: 'maior', nome: 'Tom maior: pop, country e rock' },
+  { id: 'latino', nome: 'Latino e reggae' }
+];
+
 TS.estilosBase = {
-  metronomo: { nome: 'Só metrônomo', curto: 'Metrônomo', quando: 'Para o aquecimento e para medir o seu bpm limpo.' },
-  drone: { nome: 'Nota pedal', curto: 'Pedal', quando: 'Uma nota só, sem troca de acorde. Ótimo para ouvir como cada nota soa contra a tônica.' },
-  menor: { nome: 'Menor: i – ♭VII', curto: 'i–♭VII', quando: 'Clima de rock e pop menor (ex.: Lám – Sol). A base principal das fases 1 e 2.' },
-  menor2: { nome: 'Menor: i – iv', curto: 'i–iv', quando: 'Clima de balada menor (ex.: Lám – Rém).' },
-  blues: { nome: 'Blues de 12 compassos', curto: 'Blues', quando: 'A forma mais usada no mundo para aprender a solar (ex.: Lá7 – Ré7 – Mi7).' },
-  pop: { nome: 'Pop maior: I – V – vi – IV', curto: 'Pop maior', quando: 'O clima alegre de pop, MPB e country (ex.: Dó – Sol – Lám – Fá). Para a pentatônica maior.' }
+  metronomo: { grupo: 'treino', bpm: 60, usa: 'menor', nome: 'Só metrônomo', curto: 'Metrônomo', quando: 'Para o aquecimento e para medir o seu bpm limpo.' },
+  drone: { grupo: 'treino', bpm: 70, usa: 'menor', nome: 'Nota pedal', curto: 'Pedal', quando: 'Uma nota só, sem troca de acorde. Ótimo para ouvir como cada nota soa contra a tônica.' },
+
+  menor: { grupo: 'rock', bpm: 70, usa: 'menor', nome: 'Rock menor: i – ♭VII', curto: 'Rock menor', quando: 'Clima de rock e pop menor (ex.: Lám – Sol). A base principal das fases 1 e 2.' },
+  menor2: { grupo: 'rock', bpm: 66, usa: 'menor', nome: 'Balada dedilhada: i – iv', curto: 'Balada i–iv', quando: 'Dedilhado lento (ex.: Lám – Rém). Pede notas longas e vibrato.' },
+  rock3: { grupo: 'rock', bpm: 96, usa: 'menor', nome: 'Rock de arena: i – ♭VI – ♭VII', curto: 'Rock de arena', quando: 'A subida que anuncia o refrão (ex.: Lám – Fá – Sol). Baixo marcando forte: pede frases com ataque.' },
+  descida: { grupo: 'rock', bpm: 84, usa: 'menor', nome: 'Descida dos anos 70: i – ♭VII – ♭VI – ♭VII', curto: 'Descida 70', quando: 'Lám – Sol – Fá – Sol: o chão de muitos solos épicos do rock clássico.' },
+  balada: { grupo: 'rock', bpm: 68, usa: 'menor', nome: 'Balada de rock: i – ♭VI – ♭III – ♭VII', curto: 'Balada de rock', quando: 'Dedilhado de balada (ex.: Lám – Fá – Dó – Sol). Ótima para solos que cantam.' },
+  epica: { grupo: 'rock', bpm: 64, usa: 'menor', nome: 'Solo lento e épico: i – ♭VII – ♭VI – iv', curto: 'Épica', quando: 'Lenta e espaçosa (ex.: Sim – Lá – Sol – Mim). Para notas longas, slides e muito espaço.' },
+  pesado: { grupo: 'rock', bpm: 110, usa: 'blues', nome: 'Rock pesado: power chords', curto: 'Rock pesado', quando: 'Riff abafado de duas notas por acorde (ex.: Lá5 – Dó5 – Ré5). Use a pentatônica menor com a blue note.' },
+
+  blues: { grupo: 'blues', bpm: 75, usa: 'blues', nome: 'Blues de 12 compassos (shuffle)', curto: 'Blues', quando: 'A forma mais usada no mundo para aprender a solar (ex.: Lá7 – Ré7 – Mi7), com o balanço do shuffle.' },
+  bluesLento: { grupo: 'blues', bpm: 56, usa: 'blues', nome: 'Blues lento', curto: 'Blues lento', quando: 'Os mesmos 12 compassos, bem devagar, em tercinas. Sobra tempo para caprichar em cada nota.' },
+  bluesMenor: { grupo: 'blues', bpm: 80, usa: 'menor', nome: 'Blues menor', curto: 'Blues menor', quando: '12 compassos com acordes menores (ex.: Lám – Rém – Fá7 – Mi7). Sombrio e elegante.' },
+  rocknroll: { grupo: 'blues', bpm: 132, usa: 'blues', nome: 'Rock\'n\'roll dos anos 50', curto: 'Rock\'n\'roll', quando: 'Os 12 compassos do blues, rápidos e retos. Território das duas cordas juntas.' },
+
+  pop: { grupo: 'maior', bpm: 80, usa: 'maior', nome: 'Pop maior: I – V – vi – IV', curto: 'Pop maior', quando: 'O clima alegre de pop e MPB (ex.: Dó – Sol – Lám – Fá). Para a pentatônica maior.' },
+  anos50: { grupo: 'maior', bpm: 62, usa: 'maior', nome: 'Balada antiga: I – vi – IV – V', curto: 'Balada antiga', quando: 'O dedilhado em tercinas das baladas dos anos 50 e 60 (ex.: Dó – Lám – Fá – Sol).' },
+  country: { grupo: 'maior', bpm: 96, usa: 'maior', nome: 'Country e sertanejo: I – IV – V', curto: 'Country', quando: 'Baixo alternado e batida leve (ex.: Dó – Fá – Sol). Pentatônica maior com slides.' },
+  rockMaior: { grupo: 'maior', bpm: 100, usa: 'blues', nome: 'Rock maior: I – ♭VII – IV', curto: 'Rock maior', quando: 'Ex.: Lá – Sol – Ré. Aqui servem as duas: a pentatônica menor (som de rock) e a maior (som alegre). Experimente trocar.' },
+
+  andaluz: { grupo: 'latino', bpm: 92, usa: 'menor', nome: 'Cadência andaluza: i – ♭VII – ♭VI – V', curto: 'Andaluza', quando: 'O som espanhol (ex.: Lám – Sol – Fá – Mi). No acorde de Mi, pouse no Mi.' },
+  latino: { grupo: 'latino', bpm: 104, usa: 'menor', nome: 'Rock latino: i – IV', curto: 'Rock latino', quando: 'Dois acordes que balançam (ex.: Lám7 – Ré7). O chão do rock latino dos anos 70.' },
+  reggae: { grupo: 'latino', bpm: 76, usa: 'menor', nome: 'Reggae: i – v', curto: 'Reggae', quando: 'Violão no contratempo e muito espaço (ex.: Lám – Mim). Toque pouco e deixe respirar.' }
 };
 
 TS.fases = [
@@ -65,9 +93,9 @@ TS.fases = [
       { id: 'f1e3', t: 'Repetir é estilo (AAB)', passos: ['Crie uma frase curta.', 'Toque-a 2 vezes exatamente igual.', 'Na 3ª vez, mude só o final.', 'Repita o ciclo com uma frase nova.'], meta: 'A forma AAB está em quase todo blues e rock.' },
       { id: 'f1e4', t: 'Vibrato na nota longa', passos: ['Escolha a última nota de cada frase.', 'Segure a nota e faça vibrato em pulsos regulares, devagar.', 'Compare a mesma nota com e sem vibrato.'], meta: 'A nota longa "canta" em vez de morrer.', violao: true }
     ],
-    frases: ['l01', 'l02', 'l03'],
+    frases: ['l01', 'l02', 'l03', 'l25', 'l26'],
     melodias: [],
-    desafios: ['d01'],
+    desafios: ['d01', 'd10', 'd11'],
     regras: [
       'Só 3 notas hoje: Mi, Sol e Lá.',
       'Frases de no máximo 4 notas, sempre seguidas de silêncio.',
@@ -80,7 +108,7 @@ TS.fases = [
       'Improviso 1 minuto inteiro sobre a base, sem parar, só com as 4 notas.',
       'Minhas frases têm pausas: não toco o tempo todo.',
       'Termino frases no Lá e sinto que "cheguei em casa".',
-      'Toco as 3 frases desta fase de memória.',
+      'Toco pelo menos 3 frases desta fase de memória.',
       'Gravei 1 minuto de improviso no celular. É a minha foto do início.'
     ]
   },
@@ -99,9 +127,9 @@ TS.fases = [
       { id: 'f2e4', t: 'Tire de ouvido', passos: ['Escolha uma melodia simples que você canta: cantiga, hino, refrão.', 'Ache a primeira nota no desenho, por tentativa.', 'Siga nota por nota. Se uma nota não existir na escala, pule.'], meta: 'O passo mais importante para um dia solar de ouvido.' },
       { id: 'f2e5', t: 'Improviso com vocabulário', passos: ['Ligue a base.', 'Cada frase sua deve começar com uma das frases que você aprendeu.', 'Depois do começo, vá para onde quiser.'], meta: 'Juntar o que você decorou com o que você cria.' }
     ],
-    frases: ['l04', 'l05', 'l06', 'l07'],
+    frases: ['l04', 'l05', 'l06', 'l07', 'l27', 'l28'],
     melodias: ['m1', 'm2'],
-    desafios: ['d02'],
+    desafios: ['d02', 'd12', 'd13'],
     regras: [
       'Cada frase começa com um lick que você já sabe.',
       'Use os 3 Lás: uma frase no grave, uma no meio e uma no agudo.',
@@ -133,9 +161,9 @@ TS.fases = [
       { id: 'f3e4', t: 'A forma do blues', passos: ['Ligue a base Blues em Lá e conte os 12 compassos em voz alta, olhando a grade na aba Base.', 'Toque o tema Blues da Trilha (aba Frases).', 'Improvise: compassos 1 a 4 de pergunta, 5 a 8 de resposta, 9 a 12 de conclusão.'], meta: 'Nunca mais se perder no blues.' },
       { id: 'f3e5', t: 'Uma técnica por frase', passos: ['Improvise sobre o blues.', 'Cada frase deve usar uma técnica diferente: slide, martelo, bend, vibrato, duas cordas.'], meta: 'As técnicas viram reflexo, não enfeite.' }
     ],
-    frases: ['l08', 'l09', 'l10', 'l11'],
+    frases: ['l08', 'l09', 'l10', 'l11', 'l29', 'l30', 'l31'],
     melodias: ['m3'],
-    desafios: ['d03', 'd04'],
+    desafios: ['d03', 'd04', 'd14', 'd15', 'd16', 'd17'],
     regras: [
       'Use a blue note em toda frase, só de passagem.',
       'Uma técnica diferente por frase.',
@@ -166,9 +194,9 @@ TS.fases = [
       { id: 'f4e4', t: 'Frase que atravessa', passos: ['Ligue a base.', 'Regra: toda frase passa de um desenho para o outro pelo menos uma vez.', 'Use slides para mudar de região.'], meta: 'Parar de ficar preso numa caixa.' },
       { id: 'f4e5', t: 'Tônicas em toda parte', passos: ['Ache os Lás nos Desenhos 5, 1 e 2.', 'Toque um Lá em cada região, de baixo para cima e de volta.'], meta: 'Saber onde é casa em qualquer lugar entre as casas 2 e 10.' }
     ],
-    frases: ['l12', 'l13', 'l14', 'l15'],
+    frases: ['l12', 'l13', 'l14', 'l15', 'l32', 'l33'],
     melodias: ['m1', 'm2'],
-    desafios: [],
+    desafios: ['d18', 'd20', 'd32'],
     regras: [
       'Toda frase cruza de um desenho para outro.',
       'Comece no Desenho 5 e termine no Desenho 2.',
@@ -192,14 +220,14 @@ TS.fases = [
     aquecimento: 'Desenho 1 começando e terminando no Dó (3ª corda casa 5 e 6ª corda casa 8), não no Lá.',
     base: { estilo: 'pop', tom: 0, bpm: 80 },
     exercicios: [
-      { id: 'f5e1', t: 'Mude a casa, mude o clima', passos: ['Base Pop maior em Dó: improvise terminando as frases no Dó.', 'Troque para a base Menor i – ♭VII em Lá e termine no Lá.', 'Compare: mesmas notas, sentimentos opostos.'], meta: 'Entender, tocando, o que é tonalidade.' },
+      { id: 'f5e1', t: 'Mude a casa, mude o clima', passos: ['Base Pop maior em Dó: improvise terminando as frases no Dó.', 'Troque para a base Rock menor em Lá e termine no Lá.', 'Compare: mesmas notas, sentimentos opostos.'], meta: 'Entender, tocando, o que é tonalidade.' },
       { id: 'f5e2', t: 'O truque das 3 casas', passos: ['Para solar em Lá MAIOR, pegue o Desenho 1 e desça 3 casas: casa 2.', 'Teste com a base Pop maior em Lá.', 'Funciona para qualquer tom: desenho menor 3 casas abaixo da tônica maior.'], meta: 'Solar em tom maior sem aprender nada novo.' },
       { id: 'f5e3', t: 'A terça doce', passos: ['O Mi (3ª nota do Dó) é o coração do som maior.', 'Faça frases que deslizam do Ré para o Mi (3ª corda, casa 7 para a 9).', 'Pouse nesse Mi com vibrato e depois resolva no Dó.'], meta: 'O som "feliz" que falta na pentatônica menor.' },
       { id: 'f5e4', t: 'Melodia de ouvido, versão alegre', passos: ['Escolha uma música alegre e simples que você canta.', 'Tente tocá-la no Desenho 1, centrado no Dó.'], meta: 'Treinar o ouvido no som maior.' }
     ],
-    frases: ['l16', 'l17', 'l18'],
+    frases: ['l16', 'l17', 'l18', 'l34', 'l35'],
     melodias: ['m1', 'm2'],
-    desafios: ['d05'],
+    desafios: ['d05', 'd19', 'd21', 'd22', 'd23'],
     regras: [
       'Termine toda frase no Dó.',
       'Use o slide Ré → Mi em toda frase.',
@@ -227,9 +255,9 @@ TS.fases = [
       { id: 'f6e4', t: 'Mesma frase, cinco lugares', passos: ['Escolha uma frase curta, por exemplo Chegando em casa.', 'Ache e toque essa frase nos 5 desenhos de Lá menor.'], meta: 'Provar que o mapa está inteiro na sua cabeça.' },
       { id: 'f6e5', t: 'Teste final de memória', passos: ['Na aba Braço, monte os 5 desenhos em Lá.', 'Depois troque o tom para Mi e monte de novo.'], meta: 'Os 5 desenhos em qualquer tom.' }
     ],
-    frases: ['l19', 'l20', 'l21'],
+    frases: ['l19', 'l20', 'l21', 'l36', 'l37'],
     melodias: [],
-    desafios: ['d06'],
+    desafios: ['d06', 'd24', 'd25', 'd26'],
     regras: [
       'Comece no Desenho 4 e termine no Desenho 3.',
       'Pelo menos uma corda solta por frase.',
@@ -253,13 +281,13 @@ TS.fases = [
     base: { estilo: 'blues', tom: 9, bpm: 80 },
     exercicios: [
       { id: 'f7e1', t: 'Siga os acordes', passos: ['Base Blues em Lá.', 'No Lá7, termine as frases no Lá. No Ré7, no Ré. No Mi7, no Mi.', 'Diga o nome do acorde em voz alta quando ele mudar.'], meta: 'O solo para de flutuar e passa a conversar com a música.' },
-      { id: 'f7e2', t: 'Duas notas a mais', passos: ['Na aba Braço, modo Escala completa, veja o Desenho 1 com Si e Fá.', 'Toque a frase Duas notas a mais sobre a base Menor i – ♭VII.', 'Improvise usando Si e Fá como notas de passagem.'], meta: 'A escala menor natural sem decorar nada do zero.' },
+      { id: 'f7e2', t: 'Duas notas a mais', passos: ['Na aba Braço, modo Escala completa, veja o Desenho 1 com Si e Fá.', 'Toque a frase Duas notas a mais sobre a base Rock menor.', 'Improvise usando Si e Fá como notas de passagem.'], meta: 'A escala menor natural sem decorar nada do zero.' },
       { id: 'f7e3', t: 'A escala maior de presente', passos: ['As 7 notas de Lá menor natural são as de Dó maior.', 'Na base Pop maior em Dó, use o mesmo desenho com as 2 notas novas, pousando no Dó.'], meta: 'Responder, tocando, à pergunta "escala maior ou pentatônica?".' },
       { id: 'f7e4', t: 'Tirar um solo inteiro', passos: ['Escolha um solo da lista de desafios.', 'Para cada frase: ouça, cante, ache no braço e só então confira a tab.', 'Uma frase por dia já é ótimo.'], meta: 'Aprender com os mestres, frase a frase.' }
     ],
-    frases: ['l22', 'l23', 'l24'],
+    frases: ['l22', 'l23', 'l24', 'l38', 'l39'],
     melodias: [],
-    desafios: ['d07', 'd08', 'd09'],
+    desafios: ['d07', 'd08', 'd09', 'd27', 'd28', 'd29', 'd30', 'd31'],
     regras: [
       'Diga em voz alta o nome do acorde enquanto sola.',
       'Toda frase termina na tônica do acorde da vez.',

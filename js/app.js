@@ -122,6 +122,8 @@
     return `<p class="dica violao">${esc(TS.violao[corda][ex.id === 'f3e2' ? 0 : 1])}</p>`;
   }
 
+  const LEGENDA_TAB = '<p class="legenda-tab">Cada linha é uma corda: a de <strong>baixo é a 6ª, a mais grossa</strong>; a de cima é a 1ª, a mais fina. Os números são as casas. Leia da esquerda para a direita.</p>';
+
   function cartaoFrase(l) {
     const { c, evs, raiz, maior, nomeTom } = dadosFrase(l);
     const s = E.statusLick(l.id);
@@ -136,8 +138,10 @@
           <p class="meta">Fase ${l.fase} · Desenho ${l.desenho} · ${esc(nomeTom)}</p></div>
         <span class="selo s-${s.tipo}">${esc(s.texto)}</span>
       </header>
+      ${l.estilo ? `<p class="estilo-de">No estilo de <strong>${esc(l.estilo)}</strong> <span class="meta">· frase original do método, com os recursos que marcaram esse som</span></p>` : ''}
       <p class="ideia">${esc(l.ideia)}</p>
       <div class="rolagem">${D.tab(evs, { id: l.id })}</div>
+      ${LEGENDA_TAB}
       ${c.braco ? `<div class="rolagem">${D.bracoDaFrase(evs, raiz, { id: l.id, graveEmCima: p.graveEmCima })}</div>` : ''}
       <div class="controles">
         <button type="button" class="btn ${tocando ? 'parar' : 'primario'}" data-acao="tocar" data-id="${l.id}">${tocando ? '■ Parar' : '▶ Ouvir'}</button>
@@ -189,6 +193,7 @@
       </div>
       ${enc ? `<p class="meta">Desenho ${c.desenho}: casas ${enc.inst.de} a ${enc.inst.ate}.${!p.cutaway && maior > 12 ? ' Passa da casa 12: sem cutaway, prefira outro desenho ou outro tom.' : ''}</p>
         <div class="rolagem">${D.tab(evs, { id: m.id, compasso: m.compasso, anacruse: m.anacruse })}</div>
+        ${LEGENDA_TAB}
         ${c.braco ? `<div class="rolagem">${D.bracoDaFrase(evs, centro, { id: m.id, graveEmCima: p.graveEmCima })}</div>` : ''}`
         : `<p class="aviso">Neste tom, a melodia não cabe no Desenho ${c.desenho} dentro das casas 0 a 15. Escolha outro desenho ou mude o tom.</p>`}
       <div class="controles">
@@ -204,19 +209,26 @@
 
   function cartaoDesafio(d) {
     const q = encodeURIComponent;
-    return `<article class="cartao desafio" id="c-${d.id}">
+    const feito = !!st().desafiosFeitos[d.id];
+    const est = TS.estilosBase[d.base.estilo];
+    return `<article class="cartao desafio${feito ? ' tirado' : ''}" id="c-${d.id}">
       <header class="cartao-topo">
         <div class="titulos"><h3>${esc(d.musica)}</h3>
           <p class="meta">${esc(d.artista)} · ${esc(d.parte)} · Fase ${d.fase}</p></div>
-        <span class="selo s-desafio">De ouvido</span>
+        <span class="selo s-desafio">Solo famoso</span>
       </header>
       <p><strong>Onde mora:</strong> ${esc(d.onde)}</p>
       <ol class="pistas">${d.pistas.map((p, i) => `<li><details><summary>Pista ${i + 1}</summary><p>${esc(p)}</p></details></li>`).join('')}</ol>
+      <div class="controles">
+        <button type="button" class="btn primario" data-acao="base-com" data-estilo="${d.base.estilo}" data-tom="${d.base.tom}" data-bpm="${d.base.bpm}">▶ Base em ${esc(T.NOMES[d.base.tom])} para treinar</button>
+        <span class="meta">${esc(est.curto)}, ${d.base.bpm} bpm. É uma base do app no tom da música, não a gravação.</span>
+      </div>
       <p class="dica">Tente primeiro de ouvido: ouça, cante e procure no braço. Use a tab só para conferir no final.</p>
       <p class="links">
         <a href="https://www.youtube.com/results?search_query=${q(d.musica + ' ' + d.artista + ' ' + d.parte + ' aula')}" target="_blank" rel="noopener">Ouvir e ver aulas (YouTube)</a>
         <a href="https://www.songsterr.com/?pattern=${q(d.musica + ' ' + d.artista)}" target="_blank" rel="noopener">Conferir a tab (Songsterr)</a>
       </p>
+      <div class="srs"><label class="marcar"><input type="checkbox" data-acao="desafio-feito" data-id="${d.id}"${feito ? ' checked' : ''}> Já tirei este de ouvido</label></div>
     </article>`;
   }
 
@@ -277,22 +289,38 @@
     return null;
   }
 
+  /* ----- Aulas e progresso -----
+     Cada fase é uma fila de aulas numeradas. O conteúdo de cada aula (exercício, repertório e regra do improviso)
+     sai do número da aula, e não do dia do calendário: assim dá para avançar, voltar e fazer duas no mesmo dia. */
+  const aulasPrevistas = (f) => f.frases.length * 2;
+  const checksDaFase = (f) => f.checkpoint.filter((_, i) => st().checks['f' + f.n + 'c' + i]).length;
+
+  /* Quanto da fase já foi: metade vem das aulas feitas, metade do checkpoint. */
+  function progressoFase(f) {
+    const s = st();
+    if (s.fasesConcluidas[f.n] || f.n < s.faseAtual) return 100;
+    if (f.n > s.faseAtual) return 0;
+    const aulas = Math.min(1, E.aulasFeitasNaFase(f.n) / aulasPrevistas(f));
+    return Math.round(100 * (aulas * 0.5 + (checksDaFase(f) / f.checkpoint.length) * 0.5));
+  }
+  const progressoTrilha = () => Math.round(TS.fases.reduce((a, f) => a + progressoFase(f), 0) / TS.fases.length);
+
   function planoDoDia() {
-    const f = faseAtual(), dia = E.diaDoAno(), p = st().perfil;
+    const f = faseAtual(), a = E.aulaAtual(), p = st().perfil;
     if (ui.sessaoCurta) return [{ id: 'impro', min: 5 }];
     const d = Object.assign({}, DIST[p.minutos] || DIST[20]);
     const repItens = f.melodias.map((x) => ['m', x]).concat(f.desafios.map((x) => ['d', x]));
     if (!repItens.length) { d.impro += d.rep; d.rep = 0; }
     const blocos = [];
     if (d.aquec) blocos.push({ id: 'aquec', min: d.aquec });
-    if (d.mapa) blocos.push({ id: 'mapa', min: d.mapa, ex: f.exercicios[dia % f.exercicios.length] });
+    if (d.mapa) blocos.push({ id: 'mapa', min: d.mapa, ex: f.exercicios[a % f.exercicios.length] });
     if (d.vocab) blocos.push({ id: 'vocab', min: d.vocab });
-    if (d.rep) blocos.push({ id: 'rep', min: d.rep, item: repItens[dia % repItens.length] });
+    if (d.rep) blocos.push({ id: 'rep', min: d.rep, item: repItens[a % repItens.length] });
     blocos.push({ id: 'impro', min: d.impro });
     return blocos;
   }
 
-  const TITULOS_BLOCO = { aquec: 'Aquecimento', mapa: 'Exercício do dia', vocab: 'Vocabulário', rep: 'Repertório', impro: 'Improviso' };
+  const TITULOS_BLOCO = { aquec: 'Aquecimento', mapa: 'Exercício da aula', vocab: 'Vocabulário', rep: 'Repertório', impro: 'Improviso' };
 
   function cabecalhoBloco(b, feitos) {
     const ativo = ui.timer && ui.timer.bloco === b.id;
@@ -338,9 +366,9 @@
       return tipo === 'm' ? cartaoMelodia(melodia(id)) : cartaoDesafio(desafio(id));
     }
     if (b.id === 'impro') {
-      const regra = f.regras[E.diaDoAno() % f.regras.length];
+      const regra = f.regras[E.aulaAtual() % f.regras.length];
       const nomeEst = TS.estilosBase[f.base.estilo].nome;
-      return `<div class="regra"><span class="rotulo-sec">Regra de hoje</span><p>${esc(regra)}</p></div>
+      return `<div class="regra"><span class="rotulo-sec">Regra desta aula</span><p>${esc(regra)}</p></div>
         <p>Improvise sobre a base respeitando a regra. Sem parar, sem corrigir: errou, repita a nota errada de propósito e siga em frente.</p>
         <div class="controles"><button type="button" class="btn primario" data-acao="base-com" data-estilo="${f.base.estilo}" data-tom="${f.base.tom}" data-bpm="${f.base.bpm}">▶ Tocar base: ${esc(nomeEst)} em ${esc(T.NOMES[f.base.tom])}, ${f.base.bpm} bpm</button></div>`;
     }
@@ -361,7 +389,7 @@
     const p = st().perfil;
     return `<section class="cartao configurar">
       <h2>Antes de começar: o seu violão</h2>
-      <p>Três respostas rápidas para o app adaptar as dicas (bend, vibrato, casas altas) e o tamanho da sessão.</p>
+      <p>Quatro respostas rápidas para o app adaptar as dicas (bend, vibrato, casas altas), o tamanho da aula e o desenho do braço.</p>
       <form id="form-perfil" class="form-perfil">${camposPerfil(p)}
         <button type="submit" class="btn primario">Salvar e começar</button>
       </form>
@@ -372,48 +400,118 @@
     const radio = (nome, v, rot, atual) => `<label class="opcao"><input type="radio" name="${nome}" value="${v}"${String(atual) === String(v) ? ' checked' : ''}> ${rot}</label>`;
     return `<fieldset><legend>Cordas do violão</legend>${radio('corda', 'nylon', 'Nylon', p.corda)}${radio('corda', 'aco', 'Aço', p.corda)}</fieldset>
       <fieldset><legend>Tem cutaway (recorte no corpo para alcançar as casas altas)?</legend>${radio('cutaway', 'sim', 'Sim', p.cutaway ? 'sim' : 'nao')}${radio('cutaway', 'nao', 'Não', p.cutaway ? 'sim' : 'nao')}</fieldset>
-      <fieldset><legend>Tempo de prática por dia</legend>${[10, 20, 30, 45].map((m) => radio('minutos', m, m + ' min', p.minutos)).join('')}</fieldset>`;
+      <fieldset><legend>Tempo de prática por dia</legend>${[10, 20, 30, 45].map((m) => radio('minutos', m, m + ' min', p.minutos)).join('')}</fieldset>
+      <fieldset><legend>Como desenhar o braço do violão</legend>
+        ${radio('cordas', 'fina', 'Corda fina em cima, igual à tablatura', p.graveEmCima ? 'grossa' : 'fina')}
+        ${radio('cordas', 'grossa', 'Corda grossa em cima, como você vê o violão no colo', p.graveEmCima ? 'grossa' : 'fina')}
+        <p class="meta">Nos dois jeitos, o nome de cada corda aparece ao lado. A 6ª corda é a mais grossa (som grave) e a 1ª é a mais fina (som agudo).</p></fieldset>`;
+  }
+
+  /* A trilha em 7 pontos: o que já passou, onde você está e o que falta. */
+  function jornada() {
+    const s = st();
+    const pct = progressoTrilha();
+    return `<section class="jornada" aria-label="Sua jornada">
+      <div class="jornada-topo"><p class="eyebrow">Sua jornada</p><p class="meta"><strong>${pct}%</strong> da trilha</p></div>
+      <ol class="trilho">${TS.fases.map((f) => {
+        const feita = s.fasesConcluidas[f.n] || f.n < s.faseAtual;
+        const cls = f.n === s.faseAtual ? 'atual' : feita ? 'feita' : 'futura';
+        return `<li class="${cls}"><a href="#trilha" data-acao="abrir-fase" data-n="${f.n}" title="Fase ${f.n}: ${esc(f.titulo)}"><span class="ponto">${feita ? '✓' : f.n}</span></a></li>`;
+      }).join('')}</ol>
+      <div class="barra larga"><span style="width:${pct}%"></span></div>
+    </section>`;
+  }
+
+  /* O que falta para passar de fase, numa frase. */
+  function faltaParaAvancar(f) {
+    const faltam = f.checkpoint.length - checksDaFase(f);
+    const feitas = E.aulasFeitasNaFase(f.n), prev = aulasPrevistas(f);
+    if (!faltam) return f.n < TS.fases.length ? 'Checkpoint completo: você já pode passar para a próxima fase.' : 'Checkpoint completo: você fechou a trilha.';
+    const itens = faltam === 1 ? 'falta 1 item do checkpoint' : `faltam ${faltam} itens do checkpoint`;
+    if (feitas < prev) return `Para passar de fase: ${itens}. Esta fase tem ${prev} aulas previstas e você fez ${feitas}.`;
+    return `Você já fez as ${prev} aulas previstas. Para passar de fase, ${itens}.`;
+  }
+
+  function blocoCheckpoint(f) {
+    const s = st();
+    const checks = f.checkpoint.map((_, i) => !!s.checks['f' + f.n + 'c' + i]);
+    const n = checks.filter(Boolean).length, total = f.checkpoint.length;
+    const ultima = f.n === TS.fases.length;
+    let acoes;
+    if (ultima) acoes = n === total ? '<p class="destaque">Trilha completa. Veja na aba Trilha os próximos passos.</p>' : '';
+    else if (n === total) acoes = `<button type="button" class="btn primario" data-acao="avancar" data-n="${f.n}">Concluir a Fase ${f.n} e começar a Fase ${f.n + 1}</button>`;
+    else if (ui.confirmarAvanco) acoes = `<p class="aviso">Passar para a Fase ${f.n + 1} sem fechar o checkpoint? Você pode voltar a esta fase quando quiser, pela aba Trilha.
+        <button type="button" class="btn primario" data-acao="avancar" data-n="${f.n}">Sim, ir para a Fase ${f.n + 1}</button>
+        <button type="button" class="btn" data-acao="avancar-nao">Ficar nesta fase</button></p>`;
+    else acoes = `<span class="meta">${total - n === 1 ? 'Falta 1 item.' : 'Faltam ' + (total - n) + ' itens.'}</span>
+        <button type="button" class="btn" data-acao="avancar-pedir">Passar para a Fase ${f.n + 1} mesmo assim</button>`;
+    return `<article class="bloco checkpoint" id="bloco-checkpoint">
+      <header class="bloco-topo"><h3>Posso passar de fase?</h3><span class="minutos">${n} de ${total}</span></header>
+      <div class="bloco-corpo">
+        <p class="meta">Marque o que você já consegue fazer. Com tudo marcado, a próxima fase abre. Quem decide é você, não o calendário.</p>
+        <ul class="checklist">${f.checkpoint.map((c, i) => `<li><label class="marcar"><input type="checkbox" data-acao="check" data-id="f${f.n}c${i}"${checks[i] ? ' checked' : ''}> ${esc(c)}</label></li>`).join('')}</ul>
+        <div class="controles">${acoes}</div>
+      </div>
+    </article>`;
   }
 
   function telaHoje() {
     const s = st(), f = faseAtual();
     if (!s.perfil.configurado) return telaConfigurar() + blocoMetodo(true);
+    E.abrirAulaDoDia();
+    const a = E.aulaAtual(), prev = aulasPrevistas(f);
+    const feitaEm = E.aulaFeitaEm(f.n, a);
     const blocos = planoDoDia();
     const feitos = E.blocosDeHoje();
-    const total = blocos.reduce((a, b) => a + b.min, 0);
-    const checks = f.checkpoint.filter((_, i) => s.checks['f' + f.n + 'c' + i]).length;
+    const total = blocos.reduce((x, b) => x + b.min, 0);
+    const pctFase = progressoFase(f);
     const seq = E.sequencia();
     const ult7 = [...E.diasPraticados()].filter((d) => E.diasEntre(d, E.hoje()) < 7).length;
-    const registrouHoje = s.sessoes.some((x) => x.data === E.hoje());
-    return `<section class="resumo">
+    const deMemoria = Object.keys(s.licks).filter((id) => s.licks[id].caixa >= 3).length;
+    const solos = Object.keys(s.desafiosFeitos).filter((id) => s.desafiosFeitos[id]).length;
+    const nomeAula = `Aula ${a + 1}`;
+    return `${jornada()}
+      <section class="resumo">
         <div class="resumo-fase">
           <p class="eyebrow">Fase ${f.n} de ${TS.fases.length} · semanas ${f.semanas}</p>
           <h2>${esc(f.titulo)}</h2>
           <p>${esc(f.objetivo)}</p>
-          <p class="meta">Checkpoint da fase: ${checks} de ${f.checkpoint.length} · <a href="#trilha">ver a trilha</a></p>
-          <div class="barra"><span style="width:${Math.round((checks / f.checkpoint.length) * 100)}%"></span></div>
+          <div class="barra"><span style="width:${pctFase}%"></span></div>
+          <p class="meta"><strong>${pctFase}% da fase</strong> · ${E.aulasFeitasNaFase(f.n)} de ${prev} aulas · checkpoint ${checksDaFase(f)} de ${f.checkpoint.length}</p>
+          <p class="meta">${esc(faltaParaAvancar(f))} <a href="#hoje" data-acao="ir-checkpoint">Ver o checkpoint</a></p>
         </div>
         <div class="resumo-dias">
           <p class="numero">${seq}</p><p class="meta">${seq === 1 ? 'dia seguido' : 'dias seguidos'} · ${ult7} dos últimos 7</p>
           <div class="dias">${faixaDias(14)}</div>
+          <p class="meta">${deMemoria} ${deMemoria === 1 ? 'frase' : 'frases'} de memória · ${solos} ${solos === 1 ? 'solo tirado' : 'solos tirados'}</p>
         </div>
       </section>
       <section class="sessao">
+        <div class="aula-nav">
+          <button type="button" class="btn" data-acao="aula-ir" data-delta="-1"${a === 0 ? ' disabled' : ''}>◀ Aula anterior</button>
+          <div class="aula-tit"><h2>${nomeAula} <span class="meta">${a < prev ? 'de ' + prev : 'reforço'} · ${total} min</span></h2>
+            <span class="selo ${feitaEm ? 's-concluida' : 's-atual'}">${feitaEm ? 'Concluída em ' + E.dataCurta(feitaEm) : 'A fazer'}</span></div>
+          <button type="button" class="btn" data-acao="aula-ir" data-delta="1">Próxima aula ▶</button>
+        </div>
+        ${feitaEm === E.hoje() ? `<div class="aula-ok"><p><strong>✓ ${nomeAula} concluída hoje.</strong> Quer continuar? Faça a próxima agora. Se preferir parar, amanhã ela abre sozinha.</p>
+          <button type="button" class="btn primario" data-acao="aula-ir" data-delta="1">Fazer a Aula ${a + 2} agora</button></div>` : ''}
+        ${a >= prev && !feitaEm ? `<p class="meta">Você já passou das ${prev} aulas previstas para esta fase. As aulas de reforço repetem o ciclo de exercícios. Confira o checkpoint no fim da página.</p>` : ''}
         <div class="sessao-topo">
-          <h2>Sessão de hoje <span class="meta">${total} min</span></h2>
+          <p class="meta">Cada aula tem um exercício, uma frase e uma regra de improviso diferentes.</p>
           ${segmentado('sessao-curta', [['0', 'Completa'], ['1', 'Dia corrido (5 min)']], ui.sessaoCurta ? '1' : '0')}
         </div>
-        ${ui.sessaoCurta ? '<p class="meta">Dia corrido: só improviso, com a regra e a base de hoje. O importante é não zerar.</p>' : ''}
+        ${ui.sessaoCurta ? '<p class="meta">Dia corrido: só improviso, com a regra e a base desta aula. O importante é não zerar.</p>' : ''}
         ${blocos.map((b) => `<article class="bloco${feitos[b.id] ? ' feito' : ''}" id="bloco-${b.id}">${cabecalhoBloco(b, feitos)}<div class="bloco-corpo">${corpoBloco(b)}</div></article>`).join('')}
         <article class="bloco registro">
           <header class="bloco-topo"><h3>Registro</h3><span class="minutos">1 min</span></header>
           <form id="form-sessao" class="form-sessao">
             <label>Bpm limpo no aquecimento <input type="number" id="sessao-bpm" min="30" max="240" inputmode="numeric" placeholder="ex.: 65"></label>
             <label>Como foi? (opcional) <textarea id="sessao-nota" rows="2" placeholder="O que soou bem, onde travou, o que tentar amanhã"></textarea></label>
-            <button type="submit" class="btn primario">${registrouHoje ? 'Registrar outra sessão' : 'Concluir a sessão de hoje'}</button>
-            ${registrouHoje ? '<span class="meta">Sessão de hoje já registrada.</span>' : ''}
+            <button type="submit" class="btn primario">${feitaEm ? 'Registrar de novo a ' + nomeAula : 'Concluir a ' + nomeAula}</button>
+            <span class="meta">${feitaEm ? 'Esta aula já está concluída.' : 'Ao concluir, a próxima aula fica liberada na hora.'}</span>
           </form>
         </article>
+        ${blocoCheckpoint(f)}
       </section>`;
   }
 
@@ -440,10 +538,10 @@
       const nChecks = checks.filter(Boolean).length;
       const status = concl ? ['concluida', 'Concluída'] : atual ? ['atual', 'Fase atual'] : f.n < s.faseAtual ? ['concluida', 'Para trás'] : ['futura', 'Próxima'];
       const nomeEst = TS.estilosBase[f.base.estilo].nome;
-      return `<details class="fase ${status[0]}" id="fase-${f.n}"${atual ? ' open' : ''}>
+      return `<details class="fase ${status[0]}" id="fase-${f.n}"${atual || ui.abrirFase === f.n ? ' open' : ''}>
         <summary>
           <span class="fase-num">${f.n}</span>
-          <span class="fase-tit"><strong>${esc(f.titulo)}</strong><span class="meta">Semanas ${f.semanas} · checkpoint ${nChecks}/${f.checkpoint.length}</span></span>
+          <span class="fase-tit"><strong>${esc(f.titulo)}</strong><span class="meta">Semanas ${f.semanas} · ${E.aulasFeitasNaFase(f.n)} de ${aulasPrevistas(f)} aulas · checkpoint ${nChecks}/${f.checkpoint.length} · ${progressoFase(f)}%</span></span>
           <span class="selo s-${status[0]}">${status[1]}</span>
         </summary>
         <div class="fase-corpo">
@@ -467,6 +565,7 @@
           <div class="controles">
             ${atual && nChecks === f.checkpoint.length && f.n < TS.fases.length ? `<button type="button" class="btn primario" data-acao="avancar" data-n="${f.n}">Concluir a Fase ${f.n} e começar a Fase ${f.n + 1}</button>` : ''}
             ${atual && nChecks === f.checkpoint.length && f.n === TS.fases.length ? `<p class="destaque">Trilha completa. Veja abaixo os próximos passos.</p>` : ''}
+            ${atual && nChecks < f.checkpoint.length ? `<a class="btn" href="#hoje">Ir para as aulas desta fase</a>` : ''}
             ${!atual ? `<button type="button" class="btn" data-acao="ir-fase" data-n="${f.n}">Estudar esta fase agora</button>` : ''}
           </div>
         </div>
@@ -487,8 +586,9 @@
     const e = T.escala(b.modo, b.tom);
     const insts = T.instancias(e.pcMenor, b.desenho);
     const principal = insts[0];
+    const soDesenho = b.vista !== 'braco' && !!principal;
     let pts, de, ate, faixas = [];
-    if (b.vista === 'braco' || !principal) {
+    if (!soDesenho) {
       pts = T.pontosBraco(e, insts);
       de = 0; ate = maxCasa();
       faixas = insts.map((i) => ({ de: i.de, ate: i.ate }));
@@ -497,9 +597,20 @@
       de = Math.max(0, principal.de - 1); ate = Math.min(maxCasa(), principal.ate + 1);
       if (de <= 1) de = 0;
     }
+    // ordem de tocar: do som mais grave (6ª corda) ao mais agudo (1ª corda)
+    const ordem = new Map();
+    let inicio = null;
+    if (soDesenho) {
+      const seq = [...pts].sort((x, y) => x.altura - y.altura || y.c - x.c);
+      seq.forEach((pt, i) => ordem.set(pt.c + ':' + pt.f, i + 1));
+      inicio = seq[0];
+    }
     pts.forEach((pt) => {
       if (b.modo === 'blues' && pt.tipo === 'extra') pt.tipo = 'blue';
-      pt.rotulo = b.rotulo === 'nota' ? T.nome(pt.altura) : b.rotulo === 'grau' ? T.rotuloGrau(e, pt.altura) : b.rotulo === 'dedo' ? (pt.dedo != null ? (pt.dedo === 0 ? '0' : pt.dedo) : '') : '';
+      pt.rotulo = b.rotulo === 'nota' ? T.nome(pt.altura)
+        : b.rotulo === 'grau' ? T.rotuloGrau(e, pt.altura)
+        : b.rotulo === 'dedo' ? (pt.dedo != null ? (pt.dedo === 0 ? '0' : pt.dedo) : '')
+        : b.rotulo === 'ordem' ? (ordem.get(pt.c + ':' + pt.f) || T.nome(pt.altura)) : '';
     });
     const nomeEsc = T.MODOS[b.modo].nome;
     const ondeTxt = insts.length ? insts.map((i) => `casas ${i.de} a ${i.ate}`).join(' e ') : 'fora das casas 0 a 15';
@@ -509,21 +620,41 @@
     if (b.modo === 'completa') explica += ` As 2 notas novas (${T.NOMES[e.extras[0]]} e ${T.NOMES[e.extras[1]]}) aparecem vazadas. São as mesmas 7 notas de ${T.NOMES[T.pc(b.tom + 3)]} maior.`;
     if (!p.cutaway && principal && principal.ate > 12) explica += ' Sem cutaway, este desenho fica desconfortável neste tom. Experimente o tom de Mi.';
     const dominados = [1, 2, 3, 4, 5].map((d) => [d, !!st().quiz[b.tom + '-' + d]]);
+    const lado = p.graveEmCima ? 'a linha de cima neste desenho' : 'a linha de baixo neste desenho';
+    const porOnde = inicio
+      ? `<p class="por-onde"><strong>Por onde começar:</strong> pela <strong>6ª corda, a mais grossa</strong> (${lado}), na ${inicio.f === 0 ? 'corda solta' : 'casa ' + inicio.f}. É a nota com o anel verde. Vá corda por corda até a 1ª, a mais fina, e volte pelo mesmo caminho. "Subir a escala" quer dizer ir do som grave para o agudo, não importa como o braço está desenhado. Escolha <strong>Mostrar: Ordem</strong> para ver as notas numeradas.</p>`
+      : '<p class="por-onde"><strong>Por onde começar:</strong> escolha a vista "Só o desenho" para ver a primeira nota marcada e a ordem de tocar.</p>';
+    const novato = Object.keys(st().aulasFeitas).length < 3;
     return `<section class="cartao">
       <div class="controles controles-braco">
         <label class="campo">Tom <select id="braco-tom" data-acao="braco-tom">${opcoesTom(b.tom)}</select></label>
         <span class="campo">Escala ${segmentado('braco-modo', Object.keys(T.MODOS).map((k) => [k, T.MODOS[k].curto]), b.modo)}</span>
         <span class="campo">Desenho ${segmentado('braco-desenho', [1, 2, 3, 4, 5].map((d) => [d, d]), b.desenho)}</span>
         <span class="campo">Vista ${segmentado('braco-vista', [['desenho', 'Só o desenho'], ['braco', 'Braço inteiro']], b.vista)}</span>
-        <span class="campo">Mostrar ${segmentado('braco-rotulo', [['nota', 'Notas'], ['grau', 'Graus'], ['dedo', 'Dedos'], ['nada', 'Nada']], b.rotulo)}</span>
+        <span class="campo">Mostrar ${segmentado('braco-rotulo', [['nota', 'Notas'], ['ordem', 'Ordem'], ['dedo', 'Dedos'], ['grau', 'Graus'], ['nada', 'Nada']], b.rotulo)}</span>
+        <span class="campo">Cordas ${segmentado('braco-cordas', [['0', 'Fina em cima'], ['1', 'Grossa em cima']], p.graveEmCima ? '1' : '0')}
+          <span class="meta">${p.graveEmCima ? 'como você vê o violão no colo' : 'igual à tablatura'}</span></span>
       </div>
       <p class="explica">${esc(explica)} <span class="meta">${esc(nomeEsc)}. Toque em qualquer nota para ouvir.</span></p>
-      <div class="rolagem rolagem-braco">${D.braco({ de, ate, pontos: pts, faixas, graveEmCima: p.graveEmCima, id: 'principal' })}</div>
-      <p class="legenda"><span class="lg raiz"></span> tônica (${esc(T.NOMES[e.centro])}) <span class="lg nota"></span> nota da escala ${e.extras.length ? `<span class="lg extra ${b.modo}"></span> ${b.modo === 'blues' ? 'blue note' : 'notas novas'}` : ''} ${b.vista === 'braco' ? '<span class="lg faixa"></span> desenho escolhido' : ''}</p>
+      <div class="rolagem rolagem-braco">${D.braco({ de, ate, pontos: pts, faixas, graveEmCima: p.graveEmCima, id: 'principal', inicio })}</div>
+      <p class="legenda"><span><span class="lg raiz"></span> tônica (${esc(T.NOMES[e.centro])})</span> <span><span class="lg nota"></span> nota da escala</span>
+        ${e.extras.length ? `<span><span class="lg extra ${b.modo}"></span> ${b.modo === 'blues' ? 'blue note' : 'notas novas'}</span>` : ''}
+        ${inicio ? '<span><span class="lg inicio"></span> comece aqui</span>' : ''}
+        ${!soDesenho ? '<span><span class="lg faixa"></span> desenho escolhido</span>' : ''}</p>
+      ${porOnde}
       <div class="controles">
-        <button type="button" class="btn ${ui.tocandoId === 'desenho' ? 'parar' : 'primario'}" data-acao="tocar-desenho">${ui.tocandoId === 'desenho' ? '■ Parar' : '▶ Tocar o desenho (sobe e desce)'}</button>
-        <button type="button" class="btn" data-acao="girar-braco">${p.graveEmCima ? 'Corda grave embaixo (como na tab)' : 'Corda grave em cima (como você vê o violão)'}</button>
+        <button type="button" class="btn ${ui.tocandoId === 'desenho' ? 'parar' : 'primario'}" data-acao="tocar-desenho">${ui.tocandoId === 'desenho' ? '■ Parar' : '▶ Tocar o desenho na ordem (grave → agudo → grave)'}</button>
       </div>
+      <details class="guia"${novato ? ' open' : ''}>
+        <summary>Qual corda é qual?</summary>
+        <div class="rolagem">${D.guiaCordas(p.graveEmCima)}</div>
+        <ul>
+          <li>A <strong>6ª corda</strong> é a mais grossa e a de som mais grave. Com o violão no colo, é a que fica mais perto do seu rosto.</li>
+          <li>A <strong>1ª corda</strong> é a mais fina e a de som mais agudo. É a que fica mais perto do chão.</li>
+          <li>A <strong>tablatura</strong> é ao contrário do que você vê no colo: a linha de cima é a 1ª corda (fina) e a de baixo é a 6ª (grossa).</li>
+          <li>Em "Cordas", acima, você escolhe como ver o braço. Nos dois jeitos, o nome de cada corda aparece à esquerda e a linha da corda grossa é mais grossa.</li>
+        </ul>
+      </details>
     </section>
     <section class="cartao quiz">
       <h2>Teste de memória: monte o Desenho ${b.desenho}</h2>
@@ -602,70 +733,170 @@
   function telaFrases() {
     const s = st();
     const filtro = ui.filtroFase == null ? s.faseAtual : ui.filtroFase;
+    const tipo = ui.filtroTipo || 'tudo';
     const passa = (x) => filtro === 0 || x.fase === filtro;
-    const fr = TS.frases.filter(passa), mel = TS.melodias.filter((m) => filtro === 0 || fase(filtro).melodias.includes(m.id)), des = TS.desafios.filter(passa);
+    const mostra = (t) => tipo === 'tudo' || tipo === t;
+    const fr = mostra('frases') ? TS.frases.filter((l) => passa(l) && !l.estilo) : [];
+    const mestres = mostra('mestres') ? TS.frases.filter((l) => passa(l) && l.estilo) : [];
+    const mel = mostra('melodias') ? TS.melodias.filter((m) => filtro === 0 || fase(filtro).melodias.includes(m.id)) : [];
+    const des = mostra('solos') ? TS.desafios.filter(passa) : [];
+    const tirados = TS.desafios.filter((d) => s.desafiosFeitos[d.id]).length;
     const opcoes = [[0, 'Todas']].concat(TS.fases.map((f) => [f.n, 'Fase ' + f.n]));
+    const tipos = [['tudo', 'Tudo'], ['frases', 'Frases'], ['mestres', 'Estilo dos mestres'], ['melodias', 'Melodias'], ['solos', 'Solos famosos']];
     return `<section class="filtro">
-        <span class="rotulo-ctrl">Mostrar</span>${segmentado('filtro-fase', opcoes, filtro)}
+        <span class="rotulo-ctrl">Fase</span>${segmentado('filtro-fase', opcoes, filtro)}
+      </section>
+      <section class="filtro">
+        <span class="rotulo-ctrl">Mostrar</span>${segmentado('filtro-tipo', tipos, tipo)}
       </section>
       ${fr.length ? `<h2 class="secao">Frases <span class="meta">${fr.length}</span></h2><div class="lista">${fr.map(cartaoFrase).join('')}</div>` : ''}
+      ${mestres.length ? `<h2 class="secao">No estilo dos mestres <span class="meta">${mestres.length} · frases originais com os recursos de cada guitarrista</span></h2><div class="lista">${mestres.map(cartaoFrase).join('')}</div>` : ''}
       ${mel.length ? `<h2 class="secao">Melodias conhecidas <span class="meta">mesma música, qualquer desenho</span></h2><div class="lista">${mel.map(cartaoMelodia).join('')}</div>` : ''}
-      ${des.length ? `<h2 class="secao">Desafios de ouvido <span class="meta">solos e riffs famosos</span></h2><div class="lista">${des.map(cartaoDesafio).join('')}</div>` : ''}
-      ${!fr.length && !mel.length && !des.length ? '<p>Nada nesta fase.</p>' : ''}`;
+      ${des.length ? `<h2 class="secao">Solos e riffs famosos <span class="meta">${tirados} de ${TS.desafios.length} tirados</span></h2>
+        <p class="meta">Para tirar de ouvido. As tabs desses solos têm direitos autorais, então o app não as copia: ele mostra onde a frase mora, dá pistas, toca uma base no mesmo tom e aponta onde ouvir e conferir.</p>
+        <div class="lista">${des.map(cartaoDesafio).join('')}</div>` : ''}
+      ${!fr.length && !mestres.length && !mel.length && !des.length ? '<p>Nada aqui com esses filtros.</p>' : ''}`;
   }
 
   /* ================= TELA: BASE ================= */
+  /* Qual escala usar sobre a base escolhida, e onde ela fica no braço. */
+  function dicaEscala(estilo, tom) {
+    const usa = TS.estilosBase[estilo].usa;
+    const pcMenor = usa === 'maior' ? T.pc(tom - 3) : T.pc(tom);
+    const inst = T.instanciaPrincipal(pcMenor, 1);
+    const onde = !inst ? '' : inst.de === 0 ? ' O Desenho 1 fica na primeira posição, com cordas soltas.' : ` O Desenho 1 começa na casa ${inst.de}.`;
+    const nome = T.NOMES[T.pc(tom)];
+    let texto;
+    if (usa === 'maior') texto = `pentatônica maior de ${nome}. São os desenhos de ${T.NOMES[pcMenor]} menor, com as frases pousando no ${nome}.`;
+    else if (usa === 'blues') texto = `pentatônica menor de ${nome}, com a blue note de passagem.`;
+    else texto = `pentatônica menor de ${nome}.`;
+    return { texto: texto + onde, tom: T.pc(tom), modo: usa };
+  }
+
   function telaBase() {
     const s = st(), b = s.base, B = A.Base;
     const comp = T.compassosBase(b.estilo, b.tom);
     const est = TS.estilosBase[b.estilo];
+    const dica = dicaEscala(b.estilo, b.tom);
+    const botaoEstilo = (k) => {
+      const e = TS.estilosBase[k];
+      const ex = T.compassosBase(k, b.tom).filter((c, i, arr) => c.nome && arr.findIndex((x) => x.nome === c.nome) === i).map((c) => c.nome).join(' – ');
+      return `<button type="button" class="estilo${k === b.estilo ? ' ativo' : ''}" data-acao="base-estilo" data-v="${k}" aria-pressed="${k === b.estilo}">
+        <strong>${esc(e.nome)}</strong><span class="meta">${esc(ex || 'clique a cada tempo')} · ${e.bpm} bpm</span><span>${esc(e.quando)}</span></button>`;
+    };
     return `<section class="cartao base-painel">
       <div class="base-visor">
         <button type="button" class="btn-play grande" data-acao="base-alternar" aria-label="${B.tocando ? 'Parar a base' : 'Tocar a base'}">${B.tocando ? '■' : '▶'}</button>
         <div><p class="acorde-grande" id="visor-acorde">${B.tocando ? '' : esc(comp[0].nome || '—')}</p>
           <p class="meta" id="visor-compasso">${B.tocando ? '' : 'Parada'}</p></div>
       </div>
+      <p><strong>${esc(est.nome)}</strong> em ${esc(T.NOMES[b.tom])} <span class="meta">· ${esc(est.quando)}</span></p>
       <div class="grade-compassos" id="grade">${comp.map((c, i) => `<span class="comp" data-comp="${i}"><small>${i + 1}</small>${esc(c.nome || '·')}</span>`).join('')}</div>
+      ${b.estilo !== 'metronomo' ? `<p class="para-solar"><strong>Para solar aqui:</strong> ${esc(dica.texto)} <button type="button" class="btn-link" data-acao="ver-escala" data-tom="${dica.tom}" data-modo="${dica.modo}">Ver no braço</button></p>` : ''}
       <div class="controles controles-base">
         <label class="campo">Tom <select id="base-tom" data-acao="base-tom">${opcoesTom(b.tom)}</select></label>
         <span class="campo">Andamento ${passo('base-bpm', 'base', b.bpm + ' bpm')}</span>
-        <label class="campo">Andamento fino <input type="range" min="40" max="160" step="1" value="${b.bpm}" id="base-bpm-range" data-acao="base-bpm-range"></label>
-        <span class="campo">Ritmo ${segmentado('base-ritmo', [['bateria', 'Bateria'], ['clique', 'Clique'], ['nada', 'Nada']], b.ritmo)}</span>
+        <label class="campo">Andamento fino <input type="range" min="40" max="180" step="1" value="${b.bpm}" id="base-bpm-range" data-acao="base-bpm-range"></label>
+        <span class="campo">Bateria ${segmentado('base-ritmo', [['bateria', 'Bateria'], ['clique', 'Só clique'], ['nada', 'Sem']], b.ritmo)}</span>
+        <span class="campo">Baixo ${segmentado('base-baixo', [['1', 'Ligado'], ['0', 'Desligado']], b.baixo !== false ? '1' : '0')}</span>
+        <span class="campo">Contagem ${segmentado('base-contagem', [['1', '1, 2, 3, 4 antes'], ['0', 'Sem']], b.contagem !== false ? '1' : '0')}</span>
         <label class="campo">Volume da base <input type="range" min="0" max="1" step="0.05" value="${b.volume}" id="base-volume" data-acao="base-volume"></label>
       </div>
     </section>
-    <section class="estilos">${Object.keys(TS.estilosBase).map((k) => {
-      const e = TS.estilosBase[k];
-      const ex = T.compassosBase(k, b.tom).filter((c, i, arr) => c.nome && arr.findIndex((x) => x.nome === c.nome) === i).map((c) => c.nome).join(' – ');
-      return `<button type="button" class="estilo${k === b.estilo ? ' ativo' : ''}" data-acao="base-estilo" data-v="${k}" aria-pressed="${k === b.estilo}">
-        <strong>${esc(e.nome)}</strong><span class="meta">${esc(ex || 'clique a cada tempo')}</span><span>${esc(e.quando)}</span></button>`;
-    }).join('')}</section>
-    <p class="meta">Estilo atual: ${esc(est.nome)}. As bases são geradas pelo próprio app, então não precisa de internet.</p>`;
+    ${TS.gruposBase.map((g) => {
+      const chaves = Object.keys(TS.estilosBase).filter((k) => TS.estilosBase[k].grupo === g.id);
+      return `<h2 class="secao">${esc(g.nome)} <span class="meta">${chaves.length}</span></h2><section class="estilos">${chaves.map(botaoEstilo).join('')}</section>`;
+    }).join('')}
+    <p class="meta">${Object.keys(TS.estilosBase).length} bases, em qualquer um dos 12 tons. Ao escolher uma base, o andamento vai para o sugerido; ajuste como quiser. Tudo é gerado pelo próprio app (violão, baixo e bateria), então não precisa de internet.</p>`;
   }
 
   /* ================= TELA: DIÁRIO ================= */
+  function maiorSequencia() {
+    const dias = [...E.diasPraticados()].sort();
+    let maior = 0, atual = 0, ant = null;
+    dias.forEach((d) => { atual = ant && E.diasEntre(ant, d) === 1 ? atual + 1 : 1; maior = Math.max(maior, atual); ant = d; });
+    return maior;
+  }
+
+  /* Linha do bpm limpo ao longo das sessões. */
+  function graficoBpm(lista) {
+    const W = 320, H = 96, pad = 10, topo = 16;
+    const v = lista.map((x) => x.bpm);
+    const min = Math.min(...v) - 4, max = Math.max(...v) + 4;
+    const x = (i) => pad + (i * (W - 2 * pad)) / (lista.length - 1);
+    const y = (bpm) => H - pad - ((bpm - min) * (H - pad - topo)) / (max - min);
+    const pontos = lista.map((p, i) => x(i).toFixed(1) + ',' + y(p.bpm).toFixed(1)).join(' ');
+    const ult = lista.length - 1;
+    return `<svg class="grafico" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Bpm limpo: de ${v[0]} para ${v[ult]}">
+      <polyline class="gr-linha" points="${pontos}"/>
+      <circle class="gr-ponto" cx="${x(0)}" cy="${y(v[0])}" r="4"/><circle class="gr-ponto fim" cx="${x(ult)}" cy="${y(v[ult])}" r="5"/>
+      <text class="gr-rot" x="${x(0)}" y="${y(v[0]) - 8}">${v[0]}</text><text class="gr-rot fim" x="${x(ult)}" y="${y(v[ult]) - 9}" text-anchor="end">${v[ult]} bpm</text>
+    </svg>`;
+  }
+
+  function conquistas() {
+    const s = st();
+    const aulas = Object.keys(s.aulasFeitas).length;
+    const mem = Object.keys(s.licks).filter((id) => s.licks[id].caixa >= 3).length;
+    const solos = Object.keys(s.desafiosFeitos).filter((id) => s.desafiosFeitos[id]).length;
+    const desenhos = Object.keys(s.quiz).filter((k) => s.quiz[k]).length;
+    const seq = maiorSequencia();
+    return [
+      ['Primeira aula', aulas >= 1], ['5 aulas', aulas >= 5], ['20 aulas', aulas >= 20], ['50 aulas', aulas >= 50],
+      ['3 dias seguidos', seq >= 3], ['7 dias seguidos', seq >= 7], ['30 dias seguidos', seq >= 30],
+      ['3 frases de memória', mem >= 3], ['10 frases de memória', mem >= 10], ['25 frases de memória', mem >= 25],
+      ['1º solo famoso tirado', solos >= 1], ['5 solos famosos', solos >= 5], ['15 solos famosos', solos >= 15],
+      ['1º desenho de memória', desenhos >= 1], ['Os 5 desenhos em Lá', [1, 2, 3, 4, 5].every((d) => s.quiz['9-' + d])]
+    ].concat(TS.fases.map((f) => ['Fase ' + f.n + ' concluída', !!s.fasesConcluidas[f.n]]));
+  }
+
   function telaDiario() {
     const s = st();
     const sess = [...s.sessoes].reverse();
     const minutos = s.sessoes.reduce((a, x) => a + (x.min || 0), 0);
     const comBpm = s.sessoes.filter((x) => x.bpm);
     const emEstudo = Object.keys(s.licks).length;
+    const mem = Object.keys(s.licks).filter((id) => s.licks[id].caixa >= 3).length;
     const dominadas = Object.keys(s.licks).filter((id) => E.statusLick(id).tipo === 'dominada').length;
-    return `<section class="numeros">
-        <div><p class="numero">${E.sequencia()}</p><p class="meta">dias seguidos</p></div>
-        <div><p class="numero">${s.sessoes.length}</p><p class="meta">sessões</p></div>
+    const aulas = Object.keys(s.aulasFeitas).length;
+    const solos = Object.keys(s.desafiosFeitos).filter((id) => s.desafiosFeitos[id]).length;
+    const conq = conquistas();
+    const ganhas = conq.filter((c) => c[1]).length;
+    return `${jornada()}
+      <section class="numeros">
+        <div><p class="numero">${aulas}</p><p class="meta">aulas concluídas</p></div>
+        <div><p class="numero">${E.sequencia()}</p><p class="meta">dias seguidos · recorde ${maiorSequencia()}</p></div>
         <div><p class="numero">${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, '0')}</p><p class="meta">de prática</p></div>
-        <div><p class="numero">${emEstudo}</p><p class="meta">frases em estudo · ${dominadas} dominadas</p></div>
+        <div><p class="numero">${mem}</p><p class="meta">frases de memória · ${emEstudo} em estudo · ${dominadas} dominadas</p></div>
+        <div><p class="numero">${solos}</p><p class="meta">solos famosos tirados, de ${TS.desafios.length}</p></div>
+      </section>
+      <section class="cartao">
+        <h2>Evolução por fase</h2>
+        <ul class="evolucao">${TS.fases.map((f) => {
+          const pct = progressoFase(f);
+          return `<li class="${f.n === s.faseAtual ? 'atual' : ''}"><span class="ev-nome"><strong>Fase ${f.n}</strong> ${esc(f.titulo)}</span>
+            <span class="barra"><span style="width:${pct}%"></span></span><span class="ev-pct">${pct}%</span></li>`;
+        }).join('')}</ul>
+        <p class="meta">Cada fase enche com as aulas feitas (metade) e com o checkpoint marcado (metade).</p>
+      </section>
+      <section class="cartao">
+        <h2>Velocidade limpa</h2>
+        ${comBpm.length >= 2 ? `<div class="rolagem">${graficoBpm(comBpm)}</div>
+          <p>Bpm limpo no aquecimento: começou em <strong>${comBpm[0].bpm}</strong> (${E.dataCurta(comBpm[0].data)}) e está em <strong>${comBpm[comBpm.length - 1].bpm}</strong> (${E.dataCurta(comBpm[comBpm.length - 1].data)}).</p>`
+        : '<p class="meta">Anote o bpm limpo do aquecimento ao concluir cada aula. Com 2 registros, o gráfico aparece aqui.</p>'}
+      </section>
+      <section class="cartao">
+        <h2>Conquistas <span class="meta">${ganhas} de ${conq.length}</span></h2>
+        <ul class="conquistas">${conq.map(([t, ok]) => `<li class="${ok ? 'sim' : ''}">${ok ? '✓ ' : ''}${esc(t)}</li>`).join('')}</ul>
       </section>
       <section class="cartao">
         <h2>Últimas 4 semanas</h2>
         <div class="dias grande">${faixaDias(28)}</div>
-        ${comBpm.length >= 2 ? `<p>Bpm limpo no aquecimento: começou em <strong>${comBpm[0].bpm}</strong> (${E.dataCurta(comBpm[0].data)}) e está em <strong>${comBpm[comBpm.length - 1].bpm}</strong> (${E.dataCurta(comBpm[comBpm.length - 1].data)}).</p>` : '<p class="meta">Registre o bpm limpo do aquecimento ao fim de cada sessão para acompanhar sua evolução.</p>'}
       </section>
       <section class="cartao">
-        <h2>Sessões</h2>
-        ${sess.length ? `<ul class="sessoes">${sess.map((x) => `<li><span class="data">${E.dataCurta(x.data)}</span><span>${x.min} min · Fase ${x.fase}${x.bpm ? ' · ' + x.bpm + ' bpm' : ''}</span>${x.nota ? `<p>${esc(x.nota)}</p>` : ''}</li>`).join('')}</ul>`
-        : '<p>Nenhuma sessão registrada ainda. Ao terminar a prática na aba Hoje, toque em "Concluir a sessão de hoje" e ela aparece aqui.</p>'}
+        <h2>Aulas registradas</h2>
+        ${sess.length ? `<ul class="sessoes">${sess.map((x) => `<li><span class="data">${E.dataCurta(x.data)}</span><span>Fase ${x.fase}${x.aula ? ' · Aula ' + x.aula : ''} · ${x.min} min${x.bpm ? ' · ' + x.bpm + ' bpm' : ''}</span>${x.nota ? `<p>${esc(x.nota)}</p>` : ''}</li>`).join('')}</ul>`
+        : '<p>Nenhuma aula registrada ainda. Ao terminar a prática na aba Hoje, toque em "Concluir a Aula" e ela aparece aqui.</p>'}
       </section>`;
   }
 
@@ -675,8 +906,6 @@
     return `<section class="cartao">
         <h2>Seu violão e sua rotina</h2>
         <form id="form-perfil" class="form-perfil">${camposPerfil(p)}
-          <fieldset><legend>Desenho do braço</legend>
-            <label class="opcao"><input type="checkbox" id="perfil-grave"${p.graveEmCima ? ' checked' : ''}> Corda grave em cima (como você vê o violão ao olhar para baixo)</label></fieldset>
           <button type="submit" class="btn primario">Salvar</button>
         </form>
       </section>
@@ -739,6 +968,12 @@
 
   A.Base.ouvir((ev) => {
     if (ev.estado) { atualizarPlayer(); if (rota === 'base') render(); return; }
+    if (ev.contagem) {
+      $('#pl-acorde').textContent = ev.contagem + '…';
+      const vc = $('#visor-acorde');
+      if (vc) { vc.textContent = ev.contagem; $('#visor-compasso').textContent = 'contagem: a base entra depois do 4'; }
+      return;
+    }
     $('#pl-acorde').textContent = ev.acorde || '♩';
     const v = $('#visor-acorde');
     if (v) {
@@ -748,10 +983,15 @@
     }
   });
 
+  function cfgBase() {
+    const b = st().base;
+    return { estilo: b.estilo, tom: b.tom, bpm: b.bpm, ritmo: b.ritmo, baixo: b.baixo !== false, contagem: b.contagem !== false };
+  }
+
   function aplicarBase(mudanca, iniciar) {
     E.mudar((s) => Object.assign(s.base, mudanca));
     const b = st().base;
-    A.Base.configurar({ estilo: b.estilo, tom: b.tom, bpm: b.bpm, ritmo: b.ritmo });
+    A.Base.configurar(cfgBase());
     if (iniciar && !A.Base.tocando) { A.garantir(); A.volumeBase(b.volume); A.Base.iniciar(); manterTelaAcesa(true); }
     if (rota === 'base') render(); else atualizarPlayer();
   }
@@ -759,7 +999,7 @@
   function alternarBase() {
     const b = st().base;
     if (A.Base.tocando) { A.Base.parar(); manterTelaAcesa(false); }
-    else { A.garantir(); A.volumeBase(b.volume); A.Base.iniciar({ estilo: b.estilo, tom: b.tom, bpm: b.bpm, ritmo: b.ritmo }); manterTelaAcesa(true); }
+    else { A.garantir(); A.volumeBase(b.volume); A.Base.iniciar(cfgBase()); manterTelaAcesa(true); }
   }
 
   /* ================= cronômetro dos blocos ================= */
@@ -861,23 +1101,59 @@
         break;
       case 'base-alternar': alternarBase(); break;
       case 'base-bpm': aplicarBase({ bpm: Math.max(40, Math.min(200, st().base.bpm + delta * 5)) }); break;
-      case 'base-estilo': aplicarBase({ estilo: el.dataset.v }); break;
+      case 'base-estilo': aplicarBase({ estilo: el.dataset.v, bpm: TS.estilosBase[el.dataset.v].bpm || st().base.bpm }); break;
+      case 'base-baixo': aplicarBase({ baixo: el.dataset.v === '1' }); break;
+      case 'base-contagem': aplicarBase({ contagem: el.dataset.v === '1' }); break;
+      case 'ver-escala':
+        E.mudar((x) => Object.assign(x.braco, { tom: Number(el.dataset.tom), modo: el.dataset.modo, desenho: 1, vista: 'desenho' }));
+        resetQuiz();
+        location.hash = '#braco';
+        break;
+      case 'aula-ir': {
+        const f = st().faseAtual;
+        E.irParaAula(f, E.aulaAtual(f) + delta);
+        ui.sessaoCurta = false; ui.confirmarAvanco = false;
+        if (ui.timer) { clearInterval(ui.timer.int); ui.timer = null; }
+        render();
+        window.scrollTo(0, 0);
+        toast('Aula ' + (E.aulaAtual(f) + 1) + ' aberta.');
+        break;
+      }
+      case 'ir-checkpoint': {
+        ev.preventDefault();
+        const alvo = $('#bloco-checkpoint'); if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+      case 'abrir-fase': {
+        ev.preventDefault();
+        ui.abrirFase = Number(el.dataset.n);
+        if (location.hash !== '#trilha') { ui.manterRolagem = true; location.hash = '#trilha'; }
+        irPara('trilha');
+        setTimeout(() => { const alvo = $('#fase-' + ui.abrirFase); if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+        break;
+      }
+      case 'avancar-pedir': ui.confirmarAvanco = true; render(); break;
+      case 'avancar-nao': ui.confirmarAvanco = false; render(); break;
+      case 'filtro-tipo': ui.filtroTipo = el.dataset.v; render(); break;
       case 'base-ritmo': aplicarBase({ ritmo: el.dataset.v }); break;
       case 'avancar': {
         const n = Number(el.dataset.n);
-        E.mudar((s) => { s.fasesConcluidas[n] = true; s.faseAtual = Math.min(TS.fases.length, n + 1); });
+        const completa = fase(n).checkpoint.every((_, i) => st().checks['f' + n + 'c' + i]);
+        E.mudar((s) => { if (completa) s.fasesConcluidas[n] = true; s.faseAtual = Math.min(TS.fases.length, n + 1); });
         resetQuiz();
-        toast(`Fase ${n} concluída! Bem-vindo à Fase ${n + 1}.`);
+        ui.confirmarAvanco = false; ui.sessaoCurta = false;
+        toast(completa ? `Fase ${n} concluída! Bem-vindo à Fase ${n + 1}.` : `Você está na Fase ${n + 1}. A Fase ${n} continua aberta na aba Trilha.`);
         render();
-        const alvo = $('#fase-' + (n + 1)); if (alvo) alvo.scrollIntoView({ behavior: 'smooth' });
+        if (rota === 'hoje') window.scrollTo(0, 0);
+        else { const alvo = $('#fase-' + (n + 1)); if (alvo) alvo.scrollIntoView({ behavior: 'smooth' }); }
         break;
       }
-      case 'ir-fase': E.mudar((s) => (s.faseAtual = Number(el.dataset.n))); toast('Fase atual alterada.'); render(); break;
+      case 'ir-fase': E.mudar((s) => (s.faseAtual = Number(el.dataset.n))); ui.confirmarAvanco = false; resetQuiz(); toast('Agora você está estudando a Fase ' + el.dataset.n + '. As aulas dela estão na aba Hoje.'); render(); break;
       case 'braco-modo': E.mudar((s) => (s.braco.modo = el.dataset.v)); resetQuiz(); render(); break;
       case 'braco-desenho': E.mudar((s) => (s.braco.desenho = Number(el.dataset.v))); resetQuiz(); render(); break;
       case 'braco-vista': E.mudar((s) => (s.braco.vista = el.dataset.v)); render(); break;
       case 'braco-rotulo': E.mudar((s) => (s.braco.rotulo = el.dataset.v)); render(); break;
-      case 'girar-braco': E.mudar((s) => (s.perfil.graveEmCima = !s.perfil.graveEmCima)); render(); break;
+      case 'braco-cordas': E.mudar((s) => (s.perfil.graveEmCima = el.dataset.v === '1')); render(); break;
       case 'tocar-desenho': A.garantir(); tocarDesenho(); break;
       case 'quiz-conferir': conferirQuiz(); break;
       case 'quiz-limpar': resetQuiz(); render(); break;
@@ -907,7 +1183,12 @@
     switch (acao) {
       case 'loop': ui.cartoes[id].loop = el.checked; break;
       case 'bloco-feito': E.marcarBloco(el.dataset.bloco, el.checked); el.closest('.bloco').classList.toggle('feito', el.checked); break;
-      case 'check': E.mudar((s) => (s.checks[id] = el.checked)); render(); break;
+      case 'check': E.mudar((s) => (s.checks[id] = el.checked)); ui.confirmarAvanco = false; render(); break;
+      case 'desafio-feito':
+        E.mudar((s) => (s.desafiosFeitos[id] = el.checked));
+        el.closest('.cartao').classList.toggle('tirado', el.checked);
+        if (el.checked) toast('Mais um para a sua lista de solos tirados!');
+        break;
       case 'braco-tom': E.mudar((s) => (s.braco.tom = Number(el.value))); resetQuiz(); render(); break;
       case 'base-tom': aplicarBase({ tom: Number(el.value) }); break;
       case 'base-bpm-range': aplicarBase({ bpm: Number(el.value) }); break;
@@ -929,8 +1210,7 @@
         s.perfil.corda = fd.get('corda') || s.perfil.corda;
         s.perfil.cutaway = fd.get('cutaway') === 'sim';
         s.perfil.minutos = Number(fd.get('minutos')) || s.perfil.minutos;
-        const g = $('#perfil-grave');
-        if (g) s.perfil.graveEmCima = g.checked;
+        if (fd.get('cordas')) s.perfil.graveEmCima = fd.get('cordas') === 'grossa';
         s.perfil.configurado = true;
       });
       A.definirTimbre(st().perfil.corda);
@@ -944,17 +1224,23 @@
       const minFeitos = blocos.filter((b) => feitos[b.id]).reduce((a, b) => a + b.min, 0);
       const bpm = Number($('#sessao-bpm').value) || null;
       const nota = $('#sessao-nota').value.trim();
-      E.registrarSessao({ min: (minFeitos || blocos.reduce((a, b) => a + b.min, 0)) + 1, bpm, nota });
+      const nFase = st().faseAtual, aula = E.aulaAtual(nFase);
+      E.registrarSessao({ min: (minFeitos || blocos.reduce((a, b) => a + b.min, 0)) + 1, bpm, nota, aula: aula + 1 });
+      // o dia corrido (5 min) conta para a sequência, mas a aula continua aberta
+      if (!ui.sessaoCurta) E.concluirAula(nFase, aula);
       const seq = E.sequencia();
-      toast(`Sessão registrada. ${seq} ${seq === 1 ? 'dia seguido' : 'dias seguidos'}.`);
+      const dias = `${seq} ${seq === 1 ? 'dia seguido' : 'dias seguidos'}`;
+      toast(ui.sessaoCurta ? `Dia registrado: ${dias}. A Aula ${aula + 1} continua aberta.` : `Aula ${aula + 1} concluída. ${dias}.`);
+      ui.sessaoCurta = false;
       render();
+      window.scrollTo(0, 0);
     }
   });
 
   /* ================= início ================= */
   E.carregar();
   A.definirTimbre(st().perfil.corda);
-  A.Base.configurar(st().base);
+  A.Base.configurar(cfgBase());
   irPara(location.hash.slice(1) || 'hoje');
 
   /* Celular: a tela apaga e libera a trava; ao voltar com a base tocando, trava de novo. */

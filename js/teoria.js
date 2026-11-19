@@ -217,18 +217,42 @@
     const b = 40 + T.pc(raiz - 4);
     if (tipo === 'm') return [b, b + 7, b + 12, b + 15, b + 19];
     if (tipo === '7') return [b, b + 7, b + 10, b + 16, b + 19];
+    if (tipo === 'm7') return [b, b + 7, b + 10, b + 15, b + 19];
+    if (tipo === '5') return [b, b + 7, b + 12];
     return [b, b + 7, b + 12, b + 16, b + 19];
   };
-  T.nomeAcorde = (raiz, tipo) => T.cifra(raiz) + (tipo === 'm' ? 'm' : tipo === '7' ? '7' : '');
+  T.nomeAcorde = (raiz, tipo) => T.cifra(raiz) + ({ m: 'm', 7: '7', m7: 'm7', 5: '5' }[tipo] || '');
 
-  /* Progressões das bases (graus em semitons a partir do tom). */
+  /* Progressões das bases (graus em semitons a partir do tom).
+     Cada item: [grau, tipo do acorde, compassos]. Tipos: 'M' maior, 'm' menor, '7', 'm7', '5' (power chord).
+     A levada de cada base (bateria, baixo, violão) mora em js/audio.js, com a mesma chave. */
+  const P = (...l) => l.map(([g, tipo, comp]) => ({ g, tipo, comp: comp || 1 }));
+  const doze = (graus, tipo) => graus.map((g) => ({ g, tipo, comp: 1 }));
   T.PROGRESSOES = {
     metronomo: [{ g: 0, tipo: null, comp: 1 }],
     drone: [{ g: 0, tipo: 'pedal', comp: 1 }],
-    menor: [{ g: 0, tipo: 'm', comp: 2 }, { g: 10, tipo: 'M', comp: 2 }],
-    menor2: [{ g: 0, tipo: 'm', comp: 2 }, { g: 5, tipo: 'm', comp: 2 }],
-    blues: [0, 0, 0, 0, 5, 5, 0, 0, 7, 5, 0, 7].map((g) => ({ g, tipo: '7', comp: 1 })),
-    pop: [{ g: 0, tipo: 'M', comp: 1 }, { g: 7, tipo: 'M', comp: 1 }, { g: 9, tipo: 'm', comp: 1 }, { g: 5, tipo: 'M', comp: 1 }]
+    // rock e pop em tom menor
+    menor: P([0, 'm', 2], [10, 'M', 2]),
+    menor2: P([0, 'm', 2], [5, 'm', 2]),
+    rock3: P([0, 'm', 2], [8, 'M'], [10, 'M']),
+    descida: P([0, 'm'], [10, 'M'], [8, 'M'], [10, 'M']),
+    balada: P([0, 'm'], [8, 'M'], [3, 'M'], [10, 'M']),
+    epica: P([0, 'm'], [10, 'M'], [8, 'M'], [5, 'm']),
+    pesado: P([0, '5', 2], [3, '5'], [5, '5']),
+    // blues
+    blues: doze([0, 0, 0, 0, 5, 5, 0, 0, 7, 5, 0, 7], '7'),
+    bluesLento: doze([0, 5, 0, 0, 5, 5, 0, 0, 7, 5, 0, 7], '7'),
+    bluesMenor: P([0, 'm', 4], [5, 'm', 2], [0, 'm', 2], [8, '7'], [7, '7'], [0, 'm'], [7, '7']),
+    rocknroll: doze([0, 0, 0, 0, 5, 5, 0, 0, 7, 5, 0, 0], '7'),
+    // tom maior
+    pop: P([0, 'M'], [7, 'M'], [9, 'm'], [5, 'M']),
+    anos50: P([0, 'M'], [9, 'm'], [5, 'M'], [7, 'M']),
+    country: P([0, 'M', 2], [5, 'M', 2], [7, 'M', 2], [0, 'M', 2]),
+    rockMaior: P([0, 'M'], [10, 'M'], [5, 'M'], [0, 'M']),
+    // latino
+    andaluz: P([0, 'm'], [10, 'M'], [8, 'M'], [7, 'M']),
+    latino: P([0, 'm7'], [5, '7']),
+    reggae: P([0, 'm', 2], [7, 'm', 2])
   };
 
   /* Lista compasso a compasso de uma base: [{raiz, tipo, nome}] */

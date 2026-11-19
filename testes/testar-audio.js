@@ -23,6 +23,8 @@ class FakeCtx {
   createGain() { return no({ gain: param('gain', 1) }); }
   createBiquadFilter() { return no({ type: '', frequency: param('freq', 0), Q: param('Q', 0), gain: param('fgain', 0) }); }
   createDynamicsCompressor() { return no({ threshold: param('th', 0), ratio: param('r', 0), attack: param('a', 0), release: param('rel', 0) }); }
+  createConvolver() { return no({ buffer: null }); }
+  createWaveShaper() { return no({ curve: null, oversample: 'none' }); }
   createOscillator() { return no({ frequency: param('oscfreq', 440), start: (t) => { if (!ok(t)) problemas.push('osc start'); }, stop: (t) => { if (t != null && !ok(t)) problemas.push('osc stop'); } }); }
   createBufferSource() {
     vozes++;
@@ -81,6 +83,27 @@ console.log(`Frases e melodias agendadas: ${vozes} vozes`);
         console.log(`Base ${estilo.padEnd(9)} vozes/25s=${String(vozes).padStart(4)} compassos vistos=${new Set(vistos.map((v) => v.split(':')[0])).size} acordes=${acordes.join(',')}`);
       }
     }
+  }
+  // toda progressão precisa de uma levada com a mesma chave, e os padrões têm de ter o tamanho da grade
+  for (const estilo of Object.keys(T.PROGRESSOES)) {
+    const lv = A.LEVADAS[estilo];
+    if (!lv) { problemas.push('sem levada: ' + estilo); continue; }
+    const n = 4 * lv.div;
+    [lv.b, lv.c, lv.h, lv.baixo, lv.viol && lv.viol.p].forEach((pad) => { if (pad && pad.length !== n) problemas.push(`levada ${estilo}: padrão com ${pad.length} passos, esperado ${n}`); });
+    if (!TS.estilosBase[estilo]) problemas.push('sem descrição em estilosBase: ' + estilo);
+  }
+  // contagem de entrada: 4 cliques antes do primeiro compasso
+  {
+    agora = 0;
+    const cont = [], primeiro = [];
+    const sair = A.Base.ouvir((ev) => { if (ev.contagem) cont.push(ev.contagem); else if (ev.acorde !== undefined && !primeiro.length) primeiro.push(cont.length); });
+    A.Base.iniciar({ estilo: 'menor', tom: 9, bpm: 120, ritmo: 'bateria', contagem: true });
+    for (let i = 0; i < 200; i++) { agora += 0.025; await new Promise((r) => setImmediate(r)); }
+    await new Promise((r) => setTimeout(r, 60));
+    A.Base.parar(); sair();
+    if (cont.join(',') !== '1,2,3,4' || primeiro[0] !== 4) problemas.push('contagem de entrada: ' + cont.join(',') + ' / base entrou depois de ' + primeiro[0]);
+    console.log('Contagem de entrada:', cont.join(' '));
+    A.Base.configurar({ contagem: false });
   }
   // troca de andamento e de estilo com a base tocando
   agora = 0; A.Base.iniciar({ estilo: 'blues', tom: 4, bpm: 80, ritmo: 'bateria' });
